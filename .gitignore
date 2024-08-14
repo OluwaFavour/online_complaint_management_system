@@ -1,0 +1,14 @@
+# folders
+__pycache__/
+venv/
+.pytest_cache/
+.vscode/
+
+# files
+.env
+*.sqlite3
+*.db
+*.log
+*.sql
+*.bat
+migrations/versions/*
