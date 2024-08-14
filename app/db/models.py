@@ -2,14 +2,32 @@ import datetime
 from typing import Optional
 from uuid import uuid4, UUID
 
+from fastapi import UploadFile
 from sqlalchemy import func, ForeignKey
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
 from sqlalchemy.orm import mapped_column, relationship, Mapped
 
 from ..enums import ComplaintStatus, TokenType
 from .config import Base
-from ..utils.security import get_password_hash, verify_password
+from ..core.config import settings
+from ..utils.cloudinary import upload_image
+from ..utils.security import get_password_hash
+
+
+class OTP(Base):
+    """
+    OTP model to store OTPs for email verification and password reset.
+
+    Attributes:
+        id (UUID): The primary key of the OTP.
+        email (str): The email of the user the OTP belongs to.
+        otp (str): The OTP code.
+    """
+
+    __tablename__ = "otps"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    email: Mapped[str] = mapped_column(unique=True)
+    otp: Mapped[str] = mapped_column()
 
 
 class Token(Base):
@@ -68,6 +86,7 @@ class User(Base):
         username (str): The unique username of the user.
         email (str): The unique email of the user.
         hashed_password (str): The hashed password of the user.
+        is_email_verified (bool): Whether the user's email is verified.
         is_active (bool): Whether the user account is active.
         is_superuser (bool): Whether the user has superuser privileges.
         last_login (Optional[datetime]): The timestamp of the user's last login.
@@ -86,6 +105,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column()
     is_active: Mapped[bool] = mapped_column(insert_default=True)
+    is_email_verified: Mapped[bool] = mapped_column(insert_default=False)
     is_superuser: Mapped[bool] = mapped_column(insert_default=False)
     last_login: Mapped[Optional[datetime.datetime]] = mapped_column()
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -93,7 +113,10 @@ class User(Base):
     )
 
     complaints: Mapped[list["Complaint"]] = relationship(
-        "Complaint", back_populates="user", cascade="all, delete-orphan"
+        "Complaint",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
     tokens: Mapped[list["Token"]] = relationship(
         "Token", back_populates="user", cascade="all, delete-orphan"
@@ -107,6 +130,12 @@ class User(Base):
             password (str): The new password for the user.
         """
         self.hashed_password = get_password_hash(password)
+
+    async def verify_email(self) -> None:
+        """
+        Verify the user's email.
+        """
+        self.is_email_verified = True
 
 
 class Complaint(Base):
@@ -154,3 +183,31 @@ class Complaint(Base):
             status (ComplaintStatus): The new status of the complaint.
         """
         self.status = status
+
+    async def upload_supporting_docs(self, supporting_docs: list[UploadFile]) -> None:
+        """
+        Upload supporting documents for the complaint.
+
+        Args:
+            supporting_docs (list[UploadFile]): List of supporting documents to upload.
+        """
+        # Upload supporting documents to cloudinary
+        folder = f"{settings.app_name}/{await self.awaitable_attrs.user_id}/{await self.awaitable_attrs.id}/supporting_docs"
+        for doc in supporting_docs:
+            url = await upload_image(asset_folder=folder, image=doc.file)
+            print(url)
+            if self.supporting_docs:
+                self.supporting_docs += f" {url}"
+            else:
+                self.supporting_docs = url
+
+    async def get_supporting_docs(self) -> list[str]:
+        """
+        Get the list of URLs for the supporting documents.
+
+        Returns:
+            list[str]: List of URLs for the supporting documents.
+        """
+        if self.supporting_docs:
+            return self.supporting_docs.split(" ")
+        return []

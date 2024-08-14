@@ -1,10 +1,17 @@
 from datetime import datetime, timedelta
+import secrets
 from typing import Any
 from uuid import UUID, uuid4
 
 import jwt
 
 from ..core.config import pwd_context, settings
+
+
+async def generate_otp() -> str:
+    return "".join(
+        secrets.choice("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") for _ in range(6)
+    )
 
 
 async def get_password_hash(password) -> str:

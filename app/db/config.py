@@ -11,7 +11,7 @@ from ..core.config import settings
 SQLALCHEMY_DATABASE_URL = settings.database_url
 
 async_engine: AsyncEngine = create_async_engine(
-    SQLALCHEMY_DATABASE_URL, echo="debug" if settings.debug else False
+    SQLALCHEMY_DATABASE_URL, echo=False  # "debug" if settings.debug else False
 )
 
 AsyncSessionLocal = async_sessionmaker(bind=async_engine, autoflush=False)

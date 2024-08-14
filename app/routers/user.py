@@ -19,8 +19,4 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 async def get_current_user(
     current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> UserSchema:
-    data = current_user.__dict__
-    data["complaints"] = await current_user.awaitable_attrs.complaints
-    return UserSchema(
-        **data,
-    )
+    return current_user

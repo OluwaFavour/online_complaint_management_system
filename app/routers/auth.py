@@ -1,17 +1,15 @@
+from aiosmtplib import SMTP
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status, Form
+from fastapi import APIRouter, Depends, HTTPException, Header, status, Form
+import jwt
+from pydantic import EmailStr
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings, oauth2_scheme
-from ..crud.user import (
-    get_user_by_email,
-    get_user_by_username,
-    create_user,
-    update_user_password,
-)
+from ..crud.otp import create_otp, delete_otp, get_otp_by_email
 from ..crud.token import (
     create_access_token,
     create_refresh_token,
@@ -19,12 +17,30 @@ from ..crud.token import (
     revoke_token,
     revoke_active_tokens,
 )
+from ..crud.user import (
+    get_user_by_email,
+    get_user_by_username,
+    create_user,
+    update_user_password,
+)
 from ..db.models import Token, User
-from ..dependencies import get_async_session, authenticate, get_current_active_user
+from ..dependencies import (
+    get_async_session,
+    authenticate,
+    get_current_active_user,
+    get_async_smtp,
+)
 from ..forms.auth import SignUpForm
 from ..schemas.token import Token as TokenSchema
 from ..schemas.user import User as UserSchema, UserCreate, PasswordUpdate
-from ..utils.security import get_password_hash, create_token, verify_payload
+from ..utils.messages import get_html_from_template, send_email
+from ..utils.security import (
+    generate_otp,
+    get_password_hash,
+    create_token,
+    verify_password,
+    verify_payload,
+)
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -159,13 +175,13 @@ async def refresh_access_token(
 
 @router.post(
     "/",
-    response_model=UserSchema,
     status_code=status.HTTP_201_CREATED,
     summary="Sign up user",
 )
 async def signup(
     form: Annotated[SignUpForm, Depends()],
     async_session: Annotated[AsyncSession, Depends(get_async_session)],
+    async_smtp: Annotated[SMTP, Depends(get_async_smtp)],
 ):
     form: UserCreate = form.model()
     form_data = form.model_dump()
@@ -192,7 +208,33 @@ async def signup(
     # Create the user
     user = User(**form_data)
     try:
-        return await create_user(session=async_session, user=user)
+        user = await create_user(session=async_session, user=user)
+        # Check if otp already exists for the email
+        otp = await get_otp_by_email(session=async_session, email=form_data["email"])
+        if otp:
+            # Delete the existing OTP
+            await delete_otp(session=async_session, otp=otp)
+        otp = await generate_otp()
+
+        # Encode the OTP
+        encoded_otp = await get_password_hash(otp)
+
+        # Store the encoded OTP in the database
+        await create_otp(
+            session=async_session, email=form_data["email"], otp=encoded_otp
+        )
+        # Send the reset token to the user
+        plain_text = f"Your OTP is: {otp}"
+        html_text = await get_html_from_template("email_otp_verification.html", otp=otp)
+        await send_email(
+            smtp=async_smtp,
+            sender=settings.from_email,
+            recipient=form_data["email"],
+            subject="Verify your email",
+            plain_text=plain_text,
+            html_text=html_text,
+        )
+        return {"message": "OTP sent to your email"}
     except IntegrityError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e.orig))
 
@@ -246,14 +288,54 @@ async def logout_all(
 
 
 @router.post(
+    "/forgot-password", summary="Forgot password", status_code=status.HTTP_202_ACCEPTED
+)
+async def forgot_password(
+    email: Annotated[EmailStr, Form(title="Email")],
+    async_session: Annotated[AsyncSession, Depends(get_async_session)],
+    async_smtp: Annotated[SMTP, Depends(get_async_smtp)],
+):
+    user: User | None = await get_user_by_email(session=async_session, email=email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    # Generate reset token
+    reset_token, _ = await create_token(
+        data={"sub": await user.awaitable_attrs.username},
+        expires_at=timedelta(minutes=settings.reset_token_expiry_minutes),
+    )
+    # Send the reset token to the user
+    reset_link = f"{settings.frontend_url}/reset-password?token={reset_token}"
+    plain_text = f"Click the link below to reset your password:\n{reset_link}"
+    html_text = await get_html_from_template(
+        template="reset_password.html",
+        reset_link=reset_link,
+        user_name=await user.awaitable_attrs.username,
+        expiry_time=settings.reset_token_expiry_minutes,
+    )
+    await send_email(
+        smtp=async_smtp,
+        sender=settings.from_email,
+        recipient=email,
+        subject="Reset your password",
+        plain_text=plain_text,
+        html_text=html_text,
+    )
+    return {"message": "Reset link sent to your email"}
+
+
+@router.post(
     "/reset-password",
     summary="Reset password",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=UserSchema,
 )
 async def reset_password(
+    authorization: Annotated[str, Header(pattern="Bearer .*")],
     password: Annotated[str, Form(title="New password")],
-    token: Annotated[str, Form(title="Reset token")],
     async_session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     # Validate the password
@@ -264,40 +346,160 @@ async def reset_password(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
         )
     # Verify the token
-    username, jti = await verify_payload(token)
-    token: Token | None = await get_token_by_jti(session=async_session, jti=jti)
-    if not token:
+    try:
+        token = authorization.split(" ")[1]
+        username, _ = await verify_payload(token)
+
+        # Get the user
+        user: User | None = await get_user_by_username(
+            session=async_session, username=username
+        )
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        user = await update_user_password(
+            session=async_session,
+            user=user,
+            password=await get_password_hash(password),
+        )
+        return user
+    except jwt.PyJWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
+            detail=f"Could not validate credentials because of the following error: {e}",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if await token.awaitable_attrs.revoked:
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has been revoked",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
 
-    # Get the user
-    user: User | None = await get_user_by_username(
-        session=async_session, username=username
-    )
+
+@router.post(
+    "/send-email-verification",
+    summary="Send email verification",
+    status_code=status.HTTP_200_OK,
+)
+async def send_email_verification(
+    email: Annotated[EmailStr, Form(title="Email")],
+    async_smtp: Annotated[SMTP, Depends(get_async_smtp)],
+    async_session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    # Check if email is already verified
+    user: User | None = await get_user_by_email(session=async_session, email=email)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found, please sign up",
+        )
+    elif user.is_email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already verified",
         )
 
-    user = await update_user_password(
+    # Check if otp already exists for the email
+    otp = await get_otp_by_email(session=async_session, email=email)
+    if otp:
+        # Delete the existing OTP
+        await delete_otp(session=async_session, otp=otp)
+
+    otp = await generate_otp()
+
+    # Encode the OTP
+    encoded_otp = await get_password_hash(otp)
+
+    # Store the encoded OTP in the database
+    await create_otp(session=async_session, email=email, otp=encoded_otp)
+    # Send the reset token to the user
+    plain_text = f"Your OTP is: {otp}"
+    html_text = await get_html_from_template("email_otp_verification.html", otp=otp)
+    await send_email(
+        smtp=async_smtp,
+        sender=settings.from_email,
+        recipient=email,
+        subject="Verify your email",
+        plain_text=plain_text,
+        html_text=html_text,
+    )
+    return {"message": "OTP sent to your email"}
+
+
+@router.post(
+    "/verify-email",
+    summary="Verify email",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=UserSchema,
+)
+async def verify_email(
+    email: Annotated[EmailStr, Form(title="Email")],
+    otp: Annotated[str, Form(title="OTP")],
+    async_session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    # Check if email is already verified
+    user: User | None = await get_user_by_email(session=async_session, email=email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found, please sign up",
+        )
+    elif user.is_email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already verified",
+        )
+
+    # Get the OTP
+    otp_data = await get_otp_by_email(session=async_session, email=email)
+    if not otp_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="OTP not found",
+        )
+
+    # Verify the OTP
+    if not await verify_password(otp, otp_data.otp):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OTP",
+        )
+    # Update the user
+    await user.verify_email()
+    await async_session.commit()
+    # Delete the OTP
+    await delete_otp(session=async_session, otp=otp_data)
+
+    return user
+
+
+@router.post(
+    "/change-password",
+    summary="Change password",
+    status_code=status.HTTP_200_OK,
+)
+async def change_password(
+    user: Annotated[User, Depends(get_current_active_user)],
+    new_password: Annotated[str, Form(title="New password")],
+    async_session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    # Validate the password
+    try:
+        new_password = PasswordUpdate(password=new_password).password
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
+
+    # Update the password
+    await update_user_password(
         session=async_session,
         user=user,
-        password=get_password_hash(password),
+        password=await get_password_hash(new_password),
     )
 
-    data = user.__dict__
-    data["complaints"] = await user.awaitable_attrs.complaints
-    return UserSchema(
-        **data,
-    )
+    return {"message": "Password updated successfully"}

@@ -3,9 +3,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from fastapi_pagination import add_pagination
+
 from .core.config import settings
 from .db.init_db import init_db, dispose_db
-from .routers import auth, user
+from .routers import auth, user, complaint
 
 
 @asynccontextmanager
@@ -25,6 +27,9 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
+# Add pagination support
+add_pagination(app)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -37,6 +42,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router)
 app.include_router(user.router)
+app.include_router(complaint.router)
 
 
 @app.get("/")

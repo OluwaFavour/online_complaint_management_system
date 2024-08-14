@@ -1,10 +1,13 @@
 from uuid import UUID
 
-from sqlalchemy import update, delete
+from sqlalchemy import update, delete, extract
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from ..core.config import settings
 from ..db.models import Complaint
+from ..enums import ComplaintStatus
+from ..utils.cloudinary import delete_folder_by_prefix
 
 
 async def get_complaint_by_id(
@@ -25,7 +28,9 @@ async def get_complaint_by_id(
 
 
 async def get_complaints_by_user_id(
-    session: AsyncSession, user_id: UUID
+    session: AsyncSession,
+    user_id: UUID,
+    **filters,
 ) -> list[Complaint]:
     """
     Get all complaints by a user
@@ -33,12 +38,35 @@ async def get_complaints_by_user_id(
     Args:
         session (AsyncSession): The database session
         user_id (UUID): The ID of the user
+        filters: The filters to apply
 
     Returns:
         list[Complaint]: The complaints by the user
     """
-    complaints = await session.execute(select(Complaint).filter_by(user_id=user_id))
-    return complaints.scalars().all()
+    possible_filters = {"status_type", "type", "day", "month", "year"}
+    invalid_filters = set(filters.keys()) - possible_filters
+    if invalid_filters:
+        raise ValueError(f"Invalid filters: {invalid_filters}")
+
+    query = select(Complaint).where(Complaint.user_id == user_id)
+
+    for filter_key, value in filters.items():
+        if filter_key == "day":
+            query = query.where(extract("day", Complaint.created_at) == value)
+        elif filter_key == "month":
+            query = query.where(extract("month", Complaint.created_at) == value)
+        elif filter_key == "year":
+            query = query.where(extract("year", Complaint.created_at) == value)
+        elif filter_key == "status_type":
+            if value not in ComplaintStatus.__members__:
+                raise ValueError(f"Invalid status: {value}")
+            query = query.where(Complaint.status == ComplaintStatus[value])
+        elif filter_key == "type":
+            query = query.where(Complaint.type.ilike(f"%{value}%"))
+
+    result = await session.execute(query)
+    complaints = result.scalars().all()
+    return complaints
 
 
 async def create_complaint(session: AsyncSession, complaint: Complaint) -> Complaint:
@@ -105,4 +133,6 @@ async def delete_complaint(session: AsyncSession, complaint: Complaint) -> None:
     await session.execute(
         delete(Complaint).filter_by(id=await complaint.awaitable_attrs.id)
     )
+    folder = f"{settings.app_name}/{await complaint.awaitable_attrs.user_id}/{await complaint.awaitable_attrs.id}/supporting_docs"
+    await delete_folder_by_prefix(folder)
     await session.commit()
