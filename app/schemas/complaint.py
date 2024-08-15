@@ -38,3 +38,11 @@ class Complaint(ComplaintBase):
 class ComplaintCountByStatus(BaseModel):
     status: ComplaintStatus
     count: int
+
+
+class ComplaintCountWithStatusAndTotal(BaseModel):
+    new: int
+    pending: int
+    paused: int
+    resolved: int
+    total: int
