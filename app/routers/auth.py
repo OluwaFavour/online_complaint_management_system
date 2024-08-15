@@ -423,13 +423,6 @@ async def reset_password(
         token = authorization.split(" ")[1]
         username, _ = await verify_payload(token)
 
-        # Verify the new password
-        if await verify_password(password, username):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="New password cannot be the same as the old password",
-            )
-
         # Get the user
         user: User | None = await get_user_by_username(
             session=async_session, username=username
@@ -441,11 +434,17 @@ async def reset_password(
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        user = await update_user_password(
-            session=async_session,
-            user=user,
-            password=password,
-        )
+        # Verify the new password
+        if await verify_password(password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password cannot be the same as the old password",
+            )
+
+        # Update the password
+        await user.set_password(password)
+        await async_session.commit()
+        await async_session.refresh(user)
         return user
     except jwt.PyJWTError as e:
         raise HTTPException(
@@ -622,17 +621,15 @@ async def change_password(
         )
 
     # Verify the new password
-    if await verify_password(new_password, user.hashed_password):
+    if new_password == old_password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="New password cannot be the same as the old password",
         )
 
     # Update the password
-    await update_user_password(
-        session=async_session,
-        user=user,
-        password=new_password,
-    )
+    await user.set_password(new_password)
+    await async_session.commit()
+    await async_session.refresh(user)
 
     return {"message": "Password updated successfully"}
