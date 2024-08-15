@@ -27,6 +27,46 @@ async def get_complaint_by_id(
     return complaint.scalar_one_or_none()
 
 
+async def get_all_complaints(
+    session: AsyncSession,
+    **filters,
+) -> list[Complaint]:
+    """
+    Get all complaints
+
+    Args:
+        session (AsyncSession): The database session
+        filters: The filters to apply
+
+    Returns:
+        list[Complaint]: The complaints
+    """
+    possible_filters = {"status_type", "type", "day", "month", "year"}
+    invalid_filters = set(filters.keys()) - possible_filters
+    if invalid_filters:
+        raise ValueError(f"Invalid filters: {invalid_filters}")
+
+    query = select(Complaint)
+
+    for filter_key, value in filters.items():
+        if filter_key == "day":
+            query = query.where(extract("day", Complaint.created_at) == value)
+        elif filter_key == "month":
+            query = query.where(extract("month", Complaint.created_at) == value)
+        elif filter_key == "year":
+            query = query.where(extract("year", Complaint.created_at) == value)
+        elif filter_key == "status_type":
+            if value not in ComplaintStatus.__members__:
+                raise ValueError(f"Invalid status: {value}")
+            query = query.where(Complaint.status == ComplaintStatus[value])
+        elif filter_key == "type":
+            query = query.where(Complaint.type.ilike(f"%{value}%"))
+
+    result = await session.execute(query)
+    complaints = result.scalars().all()
+    return complaints
+
+
 async def get_complaints_by_user_id(
     session: AsyncSession,
     user_id: UUID,

@@ -173,7 +173,10 @@ class Complaint(Base):
         insert_default=ComplaintStatus.NEW,
     )
 
-    user = relationship("User", back_populates="complaints")
+    user: Mapped["User"] = relationship("User", back_populates="complaints")
+    feedbacks: Mapped[list["Feedback"]] = relationship(
+        "Feedback", back_populates="complaint", lazy="selectin"
+    )
 
     async def update_status(self, status: ComplaintStatus) -> None:
         """
@@ -211,3 +214,34 @@ class Complaint(Base):
         if self.supporting_docs:
             return self.supporting_docs.split(" ")
         return []
+
+
+class Feedback(Base):
+    """
+    Feedback model to store user feedback.
+
+    Attributes:
+        id (UUID): The primary key of the feedback.
+        user_id (UUID): The ID of the user who submitted the feedback (foreign key).
+        complaint_id (UUID): The ID of the complaint the feedback is related to (foreign key).
+        message (str): The feedback message.
+        created_at (datetime): The timestamp when the feedback was created.
+        user (User): The user who submitted the feedback (relationship).
+    """
+
+    __tablename__ = "feedbacks"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    complaint_id: Mapped[UUID] = mapped_column(
+        ForeignKey("complaints.id", ondelete="CASCADE")
+    )
+    message: Mapped[str] = mapped_column()
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        insert_default=func.now(),
+    )
+
+    user: Mapped["User"] = relationship("User", back_populates="feedbacks")
+    complaint: Mapped["Complaint"] = relationship(
+        "Complaint", back_populates="feedbacks"
+    )

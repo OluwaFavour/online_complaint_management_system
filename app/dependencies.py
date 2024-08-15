@@ -121,3 +121,17 @@ async def get_current_active_user(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
         )
     return current_user
+
+
+async def get_current_active_super_user(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> User:
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
+        )
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="User is not a superuser"
+        )
+    return current_user
