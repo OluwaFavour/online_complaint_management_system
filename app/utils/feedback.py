@@ -1,4 +1,3 @@
-from ..core.config import settings
 from ..db.models import Complaint, Feedback, User
 from ..utils.messages import get_html_from_template, send_email
 

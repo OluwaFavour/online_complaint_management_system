@@ -2,8 +2,6 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from ..enums import TokenType
-
 
 class Token(BaseModel):
     access_token: str

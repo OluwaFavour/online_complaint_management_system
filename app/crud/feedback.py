@@ -3,7 +3,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from ..db.models import Complaint, Feedback, User
+from ..db.models import Feedback
 
 
 async def create_feedback(session: AsyncSession, feedback: Feedback) -> Feedback:

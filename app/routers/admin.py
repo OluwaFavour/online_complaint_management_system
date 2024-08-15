@@ -9,7 +9,7 @@ from fastapi_pagination.links import Page
 
 from ..crud.complaint import get_all_complaints, get_complaint_by_id
 from ..crud.feedback import create_feedback, get_feedback_by_id
-from ..db.models import User, Complaint
+from ..db.models import User
 from ..dependencies import get_async_session, get_current_active_super_user
 from ..enums import ComplaintStatus
 from ..schemas.complaint import Complaint as ComplaintSchema
