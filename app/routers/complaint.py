@@ -58,7 +58,7 @@ async def add_complaint(
         if supporting_docs:
             await complaint.upload_supporting_docs(supporting_docs=supporting_docs)
             await session.commit()
-        response = await ComplaintSchema.model_validate(complaint)
+        response = complaint
         return response
     except Exception as e:
         # Rollback the transaction if an error occurs
@@ -88,7 +88,7 @@ async def get_complaint(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not authorized to view this complaint",
         )
-    response = await ComplaintSchema.model_validate(complaint)
+    response = complaint
     return response
 
 
@@ -119,10 +119,7 @@ async def get_complaints(
         complaints = await get_complaints_by_user_id(
             session=session, user_id=user.id, **filters
         )
-        response = [
-            await ComplaintSchema.model_validate(complaint) for complaint in complaints
-        ]
-        return paginate(response, params=Params(size=10))
+        return paginate(complaints, params=Params(size=10))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

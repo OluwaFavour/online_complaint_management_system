@@ -208,13 +208,6 @@ async def signup(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User with this email already exists",
         )
-    if await get_user_by_username(
-        session=async_session, username=form_data["username"]
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User with this username already exists",
-        )
 
     # Hash the password
     password = form_data.pop("password")
@@ -304,7 +297,23 @@ async def logout_all(
 
 
 @router.post(
-    "/forgot-password", summary="Forgot password", status_code=status.HTTP_202_ACCEPTED
+    "/forgot-password",
+    summary="Forgot password",
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        404: {
+            "description": "User not found",
+            "content": {"application/json": {"example": {"detail": "User not found"}}},
+        },
+        202: {
+            "description": "Reset link sent to your email",
+            "content": {
+                "application/json": {
+                    "example": {"message": "Reset link sent to your email"}
+                }
+            },
+        },
+    },
 )
 async def forgot_password(
     email: Annotated[EmailStr, Form(title="Email")],
@@ -348,6 +357,22 @@ async def forgot_password(
     summary="Reset password",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=UserSchema,
+    responses={
+        400: {
+            "description": "Invalid token",
+            "content": {"application/json": {"example": {"detail": "Invalid token"}}},
+        },
+        401: {
+            "description": "Invalid token",
+            "content": {"application/json": {"example": {"detail": "Invalid token"}}},
+        },
+        422: {
+            "description": "Invalid password",
+            "content": {
+                "application/json": {"example": {"detail": "Invalid password"}}
+            },
+        },
+    },
 )
 async def reset_password(
     authorization: Annotated[str, Header(pattern="Bearer .*")],
@@ -400,6 +425,28 @@ async def reset_password(
     "/send-email-verification",
     summary="Send email verification",
     status_code=status.HTTP_200_OK,
+    responses={
+        404: {
+            "description": "User not found",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User not found, please sign up"}
+                }
+            },
+        },
+        400: {
+            "description": "Email already verified",
+            "content": {
+                "application/json": {"example": {"detail": "Email already verified"}}
+            },
+        },
+        200: {
+            "description": "OTP sent to your email",
+            "content": {
+                "application/json": {"example": {"message": "OTP sent to your email"}}
+            },
+        },
+    },
 )
 async def send_email_verification(
     email: Annotated[EmailStr, Form(title="Email")],
@@ -497,6 +544,22 @@ async def verify_email(
     "/change-password",
     summary="Change password",
     status_code=status.HTTP_200_OK,
+    responses={
+        422: {
+            "description": "Invalid password",
+            "content": {
+                "application/json": {"example": {"detail": "Invalid password"}}
+            },
+        },
+        200: {
+            "description": "Password updated successfully",
+            "content": {
+                "application/json": {
+                    "example": {"message": "Password updated successfully"}
+                }
+            },
+        },
+    },
 )
 async def change_password(
     user: Annotated[User, Depends(get_current_active_user)],

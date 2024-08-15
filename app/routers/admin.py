@@ -44,10 +44,7 @@ async def get_complaints(
     filters = {k: v for k, v in filters.items() if v is not None}
     try:
         complaints = await get_all_complaints(session=session, **filters)
-        response = [
-            await ComplaintSchema.model_validate(complaint) for complaint in complaints
-        ]
-        return paginate(response, params=Params(size=10))
+        return paginate(complaints, params=Params(size=10))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -90,7 +87,7 @@ async def update_complaint_status(
     try:
         await complaint.update_status(status=status_type)
         await session.commit()
-        return await ComplaintSchema.model_validate(complaint)
+        return complaint
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
