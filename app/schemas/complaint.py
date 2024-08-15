@@ -32,18 +32,6 @@ class Complaint(ComplaintBase):
     status: ComplaintStatus
     feedbacks: list[Feedback]
 
-    @classmethod
-    async def model_validate(cls, complaint):
-        return cls(
-            id=await complaint.awaitable_attrs.id,
-            user_id=await complaint.awaitable_attrs.user_id,
-            type=await complaint.awaitable_attrs.type,
-            description=await complaint.awaitable_attrs.description,
-            supporting_docs=await complaint.awaitable_attrs.supporting_docs,
-            created_at=await complaint.awaitable_attrs.created_at,
-            status=await complaint.awaitable_attrs.status,
-        )
-
 
 class ComplaintCountByStatus(BaseModel):
     status: ComplaintStatus
