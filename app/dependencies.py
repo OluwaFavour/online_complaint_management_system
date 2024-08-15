@@ -83,11 +83,11 @@ async def authenticate(
     password = form_data.password
     user = await get_user_by_email(session=session, email=email)
     if not user:
-        None
+        return None
     if not await verify_password(
         plain_password=password, hashed_password=user.hashed_password
     ):
-        None
+        return None
     return user
 
 
@@ -104,7 +104,7 @@ async def get_current_user(
                 detail="Invalid token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        if await token.awaitable_attrs.revoked:
+        if token.revoked:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has been revoked",

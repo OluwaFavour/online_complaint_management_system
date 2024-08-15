@@ -38,6 +38,7 @@ class Token(Base):
         id (UUID): The primary key of the token.
         user_id (UUID): The ID of the user the token belongs to (foreign key).
         jti (str): The unique identifier of the token.
+        access_jti (Optional[str]): The unique identifier of the access token.
         created_at (datetime): The timestamp when the token was created.
         expires_at (datetime): The timestamp when the token expires.
         revoked (bool): Whether the token has been revoked.
@@ -218,7 +219,7 @@ class Complaint(Base):
             supporting_docs (list[UploadFile]): List of supporting documents to upload.
         """
         # Upload supporting documents to cloudinary
-        folder = f"{settings.app_name}/{await self.awaitable_attrs.user_id}/{await self.awaitable_attrs.id}/supporting_docs"
+        folder = f"{settings.app_name}/{self.user_id}/{self.id}/supporting_docs"
         for doc in supporting_docs:
             url = await upload_image(asset_folder=folder, image=doc.file)
             print(url)

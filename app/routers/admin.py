@@ -148,7 +148,7 @@ async def reply_to_feedback(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found"
         )
-    if await feedback.awaitable_attrs.complaint_id != complaint_id:
+    if feedback.complaint_id != complaint_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Feedback does not belong to the complaint",

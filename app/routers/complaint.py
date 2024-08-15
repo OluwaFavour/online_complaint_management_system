@@ -51,7 +51,7 @@ async def add_complaint(
         complaint = Complaint(
             type=form.type,
             description=form.description,
-            user_id=await user.awaitable_attrs.id,
+            user_id=user.id,
         )
         complaint = await create_complaint(session=session, complaint=complaint)
         supporting_docs: list[UploadFile] = form.supporting_docs
@@ -83,7 +83,7 @@ async def get_complaint(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Complaint not found"
         )
-    if complaint.awaitable_attrs.user_id != user.awaitable_attrs.id:
+    if complaint.user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not authorized to view this complaint",
@@ -171,7 +171,7 @@ async def reply_to_feedback(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Complaint not found"
         )
-    if await complaint.awaitable_attrs.user_id != await user.awaitable_attrs.id:
+    if complaint.user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not authorized to reply to this feedback",
@@ -181,7 +181,7 @@ async def reply_to_feedback(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found"
         )
-    if await feedback.awaitable_attrs.complaint_id != complaint_id:
+    if feedback.complaint_id != complaint_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Feedback does not belong to the complaint",

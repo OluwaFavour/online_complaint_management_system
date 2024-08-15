@@ -85,8 +85,8 @@ async def reply_feedback(message: str, feedback: Feedback, sender: User) -> Feed
     )
     reply = Feedback(
         message_id=message_id,
-        user_id=await feedback.awaitable_attrs.user_id,
-        complaint_id=await feedback.awaitable_attrs.complaint_id,
+        user_id=feedback.user_id,
+        complaint_id=feedback.complaint_id,
         message=message,
     )
     return reply

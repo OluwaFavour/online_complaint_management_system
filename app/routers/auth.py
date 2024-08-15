@@ -66,8 +66,8 @@ async def login_for_access_token(
     access_token_expires_at: datetime = datetime.now() + timedelta(
         minutes=settings.access_token_expiry_minutes
     )
-    username = await user.awaitable_attrs.username
-    user_id = await user.awaitable_attrs.id
+    username = user.username
+    user_id = user.id
     access_token, access_jti = await create_token(
         data={"sub": username},
         expires_at=timedelta(minutes=settings.access_token_expiry_minutes),
@@ -113,9 +113,10 @@ async def login_for_access_token(
     status_code=status.HTTP_201_CREATED,
 )
 async def refresh_access_token(
-    token: Annotated[str, Depends(oauth2_scheme)],
+    authorization: Annotated[str, Header(pattern="Bearer .*")],
     async_session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
+    token = authorization.split(" ")[1]
     # Verify the token
     username, jti = await verify_payload(token)
     token: Token | None = await get_token_by_jti(session=async_session, jti=jti)
@@ -125,7 +126,7 @@ async def refresh_access_token(
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if await token.awaitable_attrs.revoked:
+    if token.revoked:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has been revoked",
@@ -152,12 +153,18 @@ async def refresh_access_token(
         expires_at=timedelta(minutes=settings.access_token_expiry_minutes),
     )
     # Revoke the old token
-    old_token_jti = await token.awaitable_attrs.access_jti
+    old_token_jti = token.access_jti
     old_token = await get_token_by_jti(session=async_session, jti=old_token_jti)
+    if not old_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token, refresh token not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     await revoke_token(
         session=async_session, token=old_token, reason="Refresh token used"
     )
-    user_id = user.awaitable_attrs.id
+    user_id = user.id
     # Save the token to the database
     await create_access_token(
         session=async_session,
@@ -266,7 +273,7 @@ async def logout(
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if await token.awaitable_attrs.revoked:
+    if token.revoked:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has been revoked",
@@ -290,7 +297,7 @@ async def logout_all(
 ):
     await revoke_active_tokens(
         session=async_session,
-        user_id=await user.awaitable_attrs.id,
+        user_id=user.id,
         reason="User logged out from all devices",
     )
     return None
