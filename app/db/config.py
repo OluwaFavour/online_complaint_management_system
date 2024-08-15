@@ -14,7 +14,9 @@ async_engine: AsyncEngine = create_async_engine(
     SQLALCHEMY_DATABASE_URL, echo=False  # "debug" if settings.debug else False
 )
 
-AsyncSessionLocal = async_sessionmaker(bind=async_engine, autoflush=False)
+AsyncSessionLocal = async_sessionmaker(
+    bind=async_engine, autoflush=False, expire_on_commit=False
+)
 
 
 # Base class for declarative_base
