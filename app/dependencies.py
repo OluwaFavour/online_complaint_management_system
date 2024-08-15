@@ -124,6 +124,12 @@ async def get_current_user(
                 detail="User not found, token invalid",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        if not user.is_email_verified:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Email not verified",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         return user
     except jwt.PyJWTError as e:
         raise HTTPException(
