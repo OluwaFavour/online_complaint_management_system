@@ -121,6 +121,9 @@ class User(Base):
     tokens: Mapped[list["Token"]] = relationship(
         "Token", back_populates="user", cascade="all, delete-orphan"
     )
+    feedbacks: Mapped[list["Feedback"]] = relationship(
+        "Feedback", back_populates="user", lazy="selectin"
+    )
 
     async def set_password(self, password: str) -> None:
         """
