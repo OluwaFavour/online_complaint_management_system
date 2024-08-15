@@ -117,67 +117,79 @@ async def refresh_access_token(
     async_session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     token = authorization.split(" ")[1]
-    # Verify the token
-    username, jti = await verify_payload(token)
-    token: Token | None = await get_token_by_jti(session=async_session, jti=jti)
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
+    try:
+        # Verify the token
+        username, jti = await verify_payload(token)
+        token: Token | None = await get_token_by_jti(session=async_session, jti=jti)
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if token.revoked:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Get the user
+        user: User | None = await get_user_by_username(
+            session=async_session, username=username
         )
-    if token.revoked:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has been revoked",
-            headers={"WWW-Authenticate": "Bearer"},
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Generate access token
+        access_token_expires_at: datetime = datetime.now() + timedelta(
+            minutes=settings.access_token_expiry_minutes
+        )
+        access_token, jti = await create_token(
+            data={"sub": username},
+            expires_at=timedelta(minutes=settings.access_token_expiry_minutes),
+        )
+        # Revoke the old token
+        old_token_jti = token.access_jti
+        old_token = await get_token_by_jti(session=async_session, jti=old_token_jti)
+        if not old_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token, refresh token not found",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        await revoke_token(
+            session=async_session, token=old_token, reason="Refresh token used"
+        )
+        user_id = user.id
+        # Save the token to the database
+        await create_access_token(
+            session=async_session,
+            jti=jti,
+            expires_at=access_token_expires_at,
+            user_id=user_id,
         )
 
-    # Get the user
-    user: User | None = await get_user_by_username(
-        session=async_session, username=username
-    )
-    if not user:
+        return TokenSchema(
+            access_token=access_token,
+            access_token_expires_at=access_token_expires_at,
+            token_type="bearer",
+        )
+    except jwt.PyJWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
+            detail=f"Could not validate credentials because of the following error: {e}",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    # Generate access token
-    access_token_expires_at: datetime = datetime.now() + timedelta(
-        minutes=settings.access_token_expiry_minutes
-    )
-    access_token, jti = await create_token(
-        data={"sub": username},
-        expires_at=timedelta(minutes=settings.access_token_expiry_minutes),
-    )
-    # Revoke the old token
-    old_token_jti = token.access_jti
-    old_token = await get_token_by_jti(session=async_session, jti=old_token_jti)
-    if not old_token:
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token, refresh token not found",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
-    await revoke_token(
-        session=async_session, token=old_token, reason="Refresh token used"
-    )
-    user_id = user.id
-    # Save the token to the database
-    await create_access_token(
-        session=async_session,
-        jti=jti,
-        expires_at=access_token_expires_at,
-        user_id=user_id,
-    )
-
-    return TokenSchema(
-        access_token=access_token,
-        access_token_expires_at=access_token_expires_at,
-        token_type="bearer",
-    )
 
 
 @router.post(
@@ -264,26 +276,38 @@ async def logout(
     token: Annotated[str, Depends(oauth2_scheme)],
     async_session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
-    # Verify the token
-    _, jti = await verify_payload(token)
-    token: Token | None = await get_token_by_jti(session=async_session, jti=jti)
-    if not token:
+    try:
+        # Verify the token
+        _, jti = await verify_payload(token)
+        token: Token | None = await get_token_by_jti(session=async_session, jti=jti)
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if token.revoked:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # Revoke the token
+        await revoke_token(session=async_session, token=token, reason="User logged out")
+
+        return None
+    except jwt.PyJWTError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
+            detail=f"Could not validate credentials because of the following error: {e}",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if token.revoked:
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has been revoked",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
-
-    # Revoke the token
-    await revoke_token(session=async_session, token=token, reason="User logged out")
-
-    return None
 
 
 @router.post(
