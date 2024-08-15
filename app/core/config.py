@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     from_email: str
     from_name: str = "Online Complaint Management System"
     frontend_url: str
+    host_servers: list[dict[str, str]] = [
+        {"url": "http://127.0.0.1:8000", "description": "localhost"}
+    ]
     jwt_algorithm: str = "HS256"
     jwt_secret_key: str
     otp_expiry_minutes: int = 5

@@ -21,6 +21,7 @@ app = FastAPI(
     debug=settings.debug,
     title=settings.app_name,
     version=settings.app_version,
+    servers=settings.host_servers,
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
