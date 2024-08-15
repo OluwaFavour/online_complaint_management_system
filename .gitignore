@@ -11,4 +11,5 @@ venv/
 *.log
 *.sql
 *.bat
+dummy.md
 migrations/versions/*
