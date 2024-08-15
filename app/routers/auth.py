@@ -444,7 +444,7 @@ async def reset_password(
         user = await update_user_password(
             session=async_session,
             user=user,
-            password=await get_password_hash(password),
+            password=password,
         )
         return user
     except jwt.PyJWTError as e:
@@ -632,7 +632,7 @@ async def change_password(
     await update_user_password(
         session=async_session,
         user=user,
-        password=await get_password_hash(new_password),
+        password=new_password,
     )
 
     return {"message": "Password updated successfully"}
