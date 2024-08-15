@@ -1,4 +1,5 @@
 import aiosmtplib
+from contextlib import asynccontextmanager
 import jwt
 from typing import AsyncGenerator, Annotated
 
@@ -24,10 +25,22 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def get_async_smtp():
     """Manage the SMTP connection by creating a new connection for each request"""
-    async_smtp = aiosmtplib.SMTP(settings.smtp_host, settings.smtp_port)
+    async_smtp = aiosmtplib.SMTP(
+        hostname=settings.smtp_host,
+        port=settings.smtp_port,
+        use_tls=False,
+        start_tls=False,
+    )
     try:
+        await async_smtp.connect()
         await async_smtp.starttls()
         await async_smtp.login(settings.smtp_login, settings.smtp_password)
+        yield async_smtp
+    except aiosmtplib.SMTPConnectError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": "Could not connect to SMTP server", "error": str(e)},
+        )
     except aiosmtplib.SMTPHeloError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -38,10 +51,17 @@ async def get_async_smtp():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": "Could not authenticate", "error": str(e)},
         )
-    try:
-        yield async_smtp
+    except aiosmtplib.SMTPException as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": "An error occurred", "error": str(e)},
+        )
     finally:
-        await async_smtp.quit()
+        try:
+            await async_smtp.quit()
+        except Exception as e:
+            # Handle or log the exception if quitting fails
+            print(f"Failed to quit SMTP connection cleanly: {e}")
 
 
 async def authenticate(

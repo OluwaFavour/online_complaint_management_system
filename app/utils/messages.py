@@ -35,18 +35,21 @@ async def create_email_message(
     references: list[str] | None = None,
 ) -> tuple[EmailMessage, str]:
     if isinstance(recipient, dict):
-        recipient = recipient["email"]
+        to_email = recipient["email"]
         to_display_name = recipient.get("display_name", "")
     else:
+        to_email = recipient
         to_display_name = ""
+
     if isinstance(sender, dict):
-        sender = sender["email"]
+        from_email = sender["email"]
         from_display_name = sender.get("display_name", "")
-    else:
+    elif isinstance(sender, str):
+        from_email = sender
         from_display_name = ""
 
-    from_name, from_domain = await parse_email_address(sender)
-    to_name, to_domain = await parse_email_address(recipient)
+    from_name, from_domain = await parse_email_address(from_email)
+    to_name, to_domain = await parse_email_address(to_email)
 
     # Generate unique Message-ID
     message_id = make_msgid()
@@ -68,7 +71,7 @@ async def create_email_message(
     if html_text:
         message.add_alternative(html_text, subtype="html")
 
-    return message, message_id
+    return message, message["Message-ID"]
 
 
 async def send_email(

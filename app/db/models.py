@@ -132,7 +132,7 @@ class User(Base):
         Args:
             password (str): The new password for the user.
         """
-        self.hashed_password = get_password_hash(password)
+        self.hashed_password = await get_password_hash(password)
 
     async def verify_email(self) -> None:
         """

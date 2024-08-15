@@ -46,5 +46,5 @@ async def delete_otp(session: AsyncSession, otp: OTP) -> None:
         session (AsyncSession): The database session
         otp (OTP): The OTP to delete
     """
-    await session.execute(delete(OTP).filter(OTP.id == otp.id))
+    await session.execute(delete(OTP).filter(OTP.id == await otp.awaitable_attrs.id))
     await session.commit()

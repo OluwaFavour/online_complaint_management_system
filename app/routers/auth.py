@@ -174,16 +174,32 @@ async def refresh_access_token(
 
 
 @router.post(
-    "/",
+    "/register",
     status_code=status.HTTP_201_CREATED,
     summary="Sign up user",
+    responses={
+        400: {
+            "description": "User with this email or username already exists",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User with this email already exists"}
+                }
+            },
+        },
+        201: {
+            "description": "OTP sent to your email",
+            "content": {
+                "application/json": {"example": {"message": "OTP sent to your email"}}
+            },
+        },
+    },
 )
 async def signup(
     form: Annotated[SignUpForm, Depends()],
     async_session: Annotated[AsyncSession, Depends(get_async_session)],
     async_smtp: Annotated[SMTP, Depends(get_async_smtp)],
 ):
-    form: UserCreate = form.model()
+    form: UserCreate = await form.model()
     form_data = form.model_dump()
 
     # Check if user already exists
@@ -203,7 +219,7 @@ async def signup(
     # Hash the password
     password = form_data.pop("password")
     if password:
-        form_data["hashed_password"] = get_password_hash(password=password)
+        form_data["hashed_password"] = await get_password_hash(password=password)
 
     # Create the user
     user = User(**form_data)
@@ -463,7 +479,7 @@ async def verify_email(
         )
 
     # Verify the OTP
-    if not await verify_password(otp, otp_data.otp):
+    if not await verify_password(otp.upper(), otp_data.otp):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid OTP",
