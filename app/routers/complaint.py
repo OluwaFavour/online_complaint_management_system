@@ -27,7 +27,11 @@ from ..db.models import Complaint, User
 from ..dependencies import get_current_active_user, get_async_session
 from ..enums import ComplaintStatus
 from ..forms.complaint import ComplaintCreateForm
-from ..schemas.complaint import Complaint as ComplaintSchema, ComplaintCountByStatus
+from ..schemas.complaint import (
+    Complaint as ComplaintSchema,
+    ComplaintCountByStatus,
+    ComplaintCountWithStatusAndTotal,
+)
 from ..schemas.feedback import Feedback as FeedbackSchema
 from ..utils.feedback import reply_feedback
 
@@ -64,6 +68,46 @@ async def add_complaint(
         # Rollback the transaction if an error occurs
         if complaint:
             await delete_complaint(session=session, complaint=complaint)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.get(
+    "/count",
+    summary="Get complaint count classified by status and total count",
+    response_model=ComplaintCountWithStatusAndTotal,
+    status_code=status.HTTP_200_OK,
+)
+async def get_complaint_count_with_status_and_total(
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    user: Annotated[User, Depends(get_current_active_user)],
+):
+    try:
+        new_complaints = await get_complaints_by_user_id(
+            session=session, user_id=user.id, status_type=ComplaintStatus.NEW.name
+        )
+        pending_complaints = await get_complaints_by_user_id(
+            session=session, user_id=user.id, status_type=ComplaintStatus.PENDING.name
+        )
+        paused_complaints = await get_complaints_by_user_id(
+            session=session, user_id=user.id, status_type=ComplaintStatus.PAUSED.name
+        )
+        resolved_complaints = await get_complaints_by_user_id(
+            session=session, user_id=user.id, status_type=ComplaintStatus.RESOLVED.name
+        )
+        new_count = len(new_complaints)
+        pending_count = len(pending_complaints)
+        paused_count = len(paused_complaints)
+        resolved_count = len(resolved_complaints)
+        total_count = new_count + pending_count + paused_count + resolved_count
+        response = ComplaintCountWithStatusAndTotal(
+            new=new_count,
+            pending=pending_count,
+            paused=paused_count,
+            resolved=resolved_count,
+            total=total_count,
+        )
+        return response
+    except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
