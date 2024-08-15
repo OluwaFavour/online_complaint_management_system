@@ -23,7 +23,7 @@ async def reply_complaint(
     html_text = await get_html_from_template(
         template="feedback.html",
         message=message,
-        username=await complaint.awaitable_attrs.user.username,
+        username=complaint.user.username,
     )
 
     sender = {
@@ -35,8 +35,8 @@ async def reply_complaint(
     message_id = await send_email(
         subject="Feedback received",
         recipient={
-            "email": await complaint.awaitable_attrs.user.email,
-            "display_name": await complaint.awaitable_attrs.user.username,
+            "email": complaint.user.email,
+            "display_name": complaint.user.username,
         },
         sender=sender,
         plain_text=plain_text,
@@ -68,20 +68,20 @@ async def reply_feedback(message: str, feedback: Feedback, sender: User) -> Feed
         await get_html_from_template(
             template="feedback.html",
             message=message,
-            username=await feedback.awaitable_attrs.user.username,
+            username=feedback.user.username,
         )
-        if await sender.awaitable_attrs.is_superuser
+        if sender.is_superuser
         else None
     )
 
     # Send mail to customer
     message_id = await send_email(
         subject="Feedback received",
-        recipient=await feedback.awaitable_attrs.user.email,
+        recipient=feedback.user.email,
         plain_text=plain_text,
         html_text=html_text,
-        in_reply_to=await feedback.awaitable_attrs.message_id,
-        references=[await feedback.awaitable_attrs.message_id],
+        in_reply_to=feedback.message_id,
+        references=[feedback.message_id],
     )
     reply = Feedback(
         message_id=message_id,

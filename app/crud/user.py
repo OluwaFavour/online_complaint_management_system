@@ -91,9 +91,7 @@ async def update_user(session: AsyncSession, user: User, **kwargs) -> User:
     }
     if not (extra_keys := set(kwargs.keys()) - possible_keys):
         raise ValueError(f"Invalid keys: {extra_keys}")
-    user = await session.execute(
-        update(User).filter_by(id=await user.awaitable_attrs.id).values(**kwargs)
-    )
+    user = await session.execute(update(User).filter_by(id=user.id).values(**kwargs))
     await session.commit()
     return user
 

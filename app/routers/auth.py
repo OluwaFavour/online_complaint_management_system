@@ -336,7 +336,7 @@ async def forgot_password(
 
     # Generate reset token
     reset_token, _ = await create_token(
-        data={"sub": await user.awaitable_attrs.username},
+        data={"sub": user.username},
         expires_at=timedelta(minutes=settings.reset_token_expiry_minutes),
     )
     # Send the reset token to the user
@@ -345,7 +345,7 @@ async def forgot_password(
     html_text = await get_html_from_template(
         template="reset_password.html",
         reset_link=reset_link,
-        username=await user.awaitable_attrs.username,
+        username=user.username,
         expiry_time=settings.reset_token_expiry_minutes,
     )
     await send_email(

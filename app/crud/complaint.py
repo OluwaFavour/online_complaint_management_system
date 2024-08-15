@@ -151,9 +151,7 @@ async def update_complaint(
     if not (extra_keys := set(kwargs.keys()) - possible_keys):
         raise ValueError(f"Invalid keys: {extra_keys}")
     complaint = await session.execute(
-        update(Complaint)
-        .filter_by(id=await complaint.awaitable_attrs.id)
-        .values(**kwargs)
+        update(Complaint).filter_by(id=complaint.id).values(**kwargs)
     )
     await session.commit()
     return complaint
@@ -170,9 +168,7 @@ async def delete_complaint(session: AsyncSession, complaint: Complaint) -> None:
     Returns:
         None
     """
-    await session.execute(
-        delete(Complaint).filter_by(id=await complaint.awaitable_attrs.id)
-    )
+    await session.execute(delete(Complaint).filter_by(id=complaint.id))
     folder = f"{settings.app_name}/{complaint.user_id}/{complaint.id}/supporting_docs"
     await delete_folder_by_prefix(folder)
     await session.commit()
