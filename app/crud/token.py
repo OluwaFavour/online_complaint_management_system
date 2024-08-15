@@ -124,7 +124,7 @@ async def revoke_token(
     Returns:
         None
     """
-    token.revoke(reason)
+    await token.revoke(reason)
     await session.commit()
     await session.refresh(token)
 
