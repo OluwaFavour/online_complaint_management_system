@@ -19,6 +19,7 @@ async def create_feedback(session: AsyncSession, feedback: Feedback) -> Feedback
     """
     session.add(feedback)
     await session.commit()
+    await session.refresh(feedback)
     return feedback
 
 

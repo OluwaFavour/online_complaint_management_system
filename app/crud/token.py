@@ -23,6 +23,7 @@ async def create_token(session: AsyncSession, token: Token) -> Token:
     """
     session.add(token)
     await session.commit()
+    await session.refresh(token)
     return token
 
 
@@ -125,6 +126,7 @@ async def revoke_token(
     """
     token.revoke(reason)
     await session.commit()
+    await session.refresh(token)
 
 
 async def revoke_active_tokens(

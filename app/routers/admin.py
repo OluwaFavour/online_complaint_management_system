@@ -87,6 +87,7 @@ async def update_complaint_status(
     try:
         await complaint.update_status(status=status_type)
         await session.commit()
+        await session.refresh(complaint)
         return complaint
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

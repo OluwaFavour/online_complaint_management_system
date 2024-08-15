@@ -65,6 +65,7 @@ async def create_user(session: AsyncSession, user: User) -> User:
     """
     session.add(user)
     await session.commit()
+    await session.refresh(user)
     return user
 
 
@@ -93,6 +94,7 @@ async def update_user(session: AsyncSession, user: User, **kwargs) -> User:
         raise ValueError(f"Invalid keys: {extra_keys}")
     user = await session.execute(update(User).filter_by(id=user.id).values(**kwargs))
     await session.commit()
+    await session.refresh(user)
     return user
 
 
@@ -112,4 +114,5 @@ async def update_user_password(
     """
     user.set_password(password)
     await session.commit()
+    await session.refresh(user)
     return user

@@ -21,7 +21,9 @@ class ComplaintBase(BaseModel):
 
     @field_serializer("supporting_docs", when_used="json")
     def serialize_supporting_docs(value: Optional[str]) -> list[HttpUrl]:
-        return value.split(" ") if value else []
+        urls = value.split(" ") if value else []
+        urls = [HttpUrl(url=url) for url in urls]
+        return urls
 
 
 class Complaint(ComplaintBase):

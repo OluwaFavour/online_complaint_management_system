@@ -122,6 +122,7 @@ async def create_complaint(session: AsyncSession, complaint: Complaint) -> Compl
     """
     session.add(complaint)
     await session.commit()
+    await session.refresh(complaint)
     return complaint
 
 
@@ -154,6 +155,7 @@ async def update_complaint(
         update(Complaint).filter_by(id=complaint.id).values(**kwargs)
     )
     await session.commit()
+    await session.refresh(complaint)
     return complaint
 
 

@@ -393,10 +393,18 @@ async def reset_password(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
         )
+
     # Verify the token
     try:
         token = authorization.split(" ")[1]
         username, _ = await verify_payload(token)
+
+        # Verify the new password
+        if await verify_password(password, username):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="New password cannot be the same as the old password",
+            )
 
         # Get the user
         user: User | None = await get_user_by_username(
@@ -571,6 +579,7 @@ async def verify_email(
 async def change_password(
     user: Annotated[User, Depends(get_current_active_user)],
     new_password: Annotated[str, Form(title="New password")],
+    old_password: Annotated[str, Form(title="Old password")],
     async_session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     # Validate the password
@@ -579,6 +588,20 @@ async def change_password(
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        )
+
+    # Verify the old password
+    if not await verify_password(old_password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect old password",
+        )
+
+    # Verify the new password
+    if await verify_password(new_password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password cannot be the same as the old password",
         )
 
     # Update the password

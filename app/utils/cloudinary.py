@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any
 
 from cloudinary.uploader import upload

@@ -20,6 +20,7 @@ async def create_otp(session: AsyncSession, otp: str, email: str) -> OTP:
     otp = OTP(otp=otp, email=email)
     session.add(otp)
     await session.commit()
+    await session.refresh(otp)
     return otp
 
 

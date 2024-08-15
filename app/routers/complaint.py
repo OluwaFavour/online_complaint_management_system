@@ -58,8 +58,8 @@ async def add_complaint(
         if supporting_docs:
             await complaint.upload_supporting_docs(supporting_docs=supporting_docs)
             await session.commit()
-        response = complaint
-        return response
+            await session.refresh(complaint)
+        return complaint
     except Exception as e:
         # Rollback the transaction if an error occurs
         if complaint:
@@ -88,8 +88,7 @@ async def get_complaint(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You are not authorized to view this complaint",
         )
-    response = complaint
-    return response
+    return complaint
 
 
 @router.get(
@@ -105,7 +104,7 @@ async def get_complaints(
     status_type: Annotated[Optional[ComplaintStatus], Query()] = None,
     day: Annotated[Optional[int], Query(gt=0, le=31)] = None,
     month: Annotated[Optional[int], Query(gt=0, le=12)] = None,
-    year: Annotated[Optional[str], Query(pattern=r"r^\d{4}$", example="2024")] = None,
+    year: Annotated[Optional[str], Query(pattern=r"^\d{4}$", example="2024")] = None,
 ):
     filters = {
         "type": type,

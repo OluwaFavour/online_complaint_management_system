@@ -222,7 +222,6 @@ class Complaint(Base):
         folder = f"{settings.app_name}/{self.user_id}/{self.id}/supporting_docs"
         for doc in supporting_docs:
             url = await upload_image(asset_folder=folder, image=doc.file)
-            print(url)
             if self.supporting_docs:
                 self.supporting_docs += f" {url}"
             else:
