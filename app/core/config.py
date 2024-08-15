@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     database_url: str
     debug: bool = False
     from_email: str
+    from_name: str = "Online Complaint Management System"
+    frontend_url: str
     jwt_algorithm: str = "HS256"
     jwt_secret_key: str
     otp_expiry_minutes: int = 5

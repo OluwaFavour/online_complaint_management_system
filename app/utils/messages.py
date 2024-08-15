@@ -1,3 +1,6 @@
+from email.message import EmailMessage
+from email.headerregistry import Address
+from email.utils import make_msgid
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from aiosmtplib import (
@@ -15,44 +18,89 @@ from jinja2 import FileSystemLoader, Environment, Template
 from ..core.config import settings
 
 
+async def parse_email_address(email_address: str) -> tuple[str, str]:
+    email_address = email_address.split("@")
+    if len(email_address) != 2:
+        raise ValueError("Invalid email address")
+    return email_address[0], email_address[1]
+
+
 async def create_email_message(
     subject: str,
-    recipient: str,
+    recipient: str | dict[str, str],
     plain_text: str,
-    sender: str,
+    sender: str | dict[str, str],
     html_text: str | None = None,
-) -> MIMEText | MIMEMultipart:
-    if html_text:
-        message = MIMEMultipart("alternative")
-        message.attach(MIMEText(plain_text, "plain"))
-        message.attach(MIMEText(html_text, "html"))
+    in_reply_to: str | None = None,
+    references: list[str] | None = None,
+) -> tuple[EmailMessage, str]:
+    if isinstance(recipient, dict):
+        recipient = recipient["email"]
+        to_display_name = recipient.get("display_name", "")
     else:
-        message = MIMEText(plain_text, "plain")
+        to_display_name = ""
+    if isinstance(sender, dict):
+        sender = sender["email"]
+        from_display_name = sender.get("display_name", "")
+    else:
+        from_display_name = ""
 
+    from_name, from_domain = await parse_email_address(sender)
+    to_name, to_domain = await parse_email_address(recipient)
+
+    # Generate unique Message-ID
+    message_id = make_msgid()
+
+    message = EmailMessage()
     message["Subject"] = subject
-    message["From"] = sender
-    message["To"] = recipient
+    message["From"] = Address(from_display_name, from_name, from_domain)
+    message["To"] = Address(to_display_name, to_name, to_domain)
+    message["Message-ID"] = message_id
 
-    return message
+    # Add In-Reply-To and References headers if provided
+    if in_reply_to:
+        message["In-Reply-To"] = in_reply_to
+    if references:
+        message["References"] = ", ".join(references)
+
+    message.set_content(plain_text)
+
+    if html_text:
+        message.add_alternative(html_text, subtype="html")
+
+    return message, message_id
 
 
 async def send_email(
     smtp: SMTP,
     subject: str,
-    recipient: str,
+    recipient: str | dict[str, str],
     plain_text: str,
     html_text: str | None = None,
-    sender: str = settings.from_email,
-) -> None:
+    sender: str | dict[str, str] = {
+        "email": settings.from_email,
+        "display_name": settings.from_name,
+    },
+    in_reply_to: str | None = None,
+    references: list[str] | None = None,
+) -> str:
     try:
-        message = await create_email_message(
+        message, message_id = await create_email_message(
             subject=subject,
             recipient=recipient,
             plain_text=plain_text,
             html_text=html_text,
             sender=sender,
+            in_reply_to=in_reply_to,
+            references=references,
         )
-        await smtp.sendmail(sender, recipient, message.as_string())
+        await smtp.send_message(message)
+        return message_id
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"message": "Invalid email address", "error": str(e)},
+        )
     except SMTPRecipientsRefused as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -76,8 +124,6 @@ async def send_email(
                 "error": str(e),
             },
         )
-    else:
-        return None
 
 
 async def get_html_from_template(template: str, **kwargs) -> str:

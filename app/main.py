@@ -7,7 +7,7 @@ from fastapi_pagination import add_pagination
 
 from .core.config import settings
 from .db.init_db import init_db, dispose_db
-from .routers import auth, user, complaint
+from .routers import auth, user, complaint, admin
 
 
 @asynccontextmanager
@@ -43,6 +43,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(user.router)
 app.include_router(complaint.router)
+app.include_router(admin.router)
 
 
 @app.get("/")

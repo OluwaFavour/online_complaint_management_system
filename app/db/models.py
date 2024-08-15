@@ -185,7 +185,27 @@ class Complaint(Base):
         Args:
             status (ComplaintStatus): The new status of the complaint.
         """
-        self.status = status
+
+        # First validate status transition
+        if self.status == ComplaintStatus.NEW and status == ComplaintStatus.PENDING:
+            self.status = status
+        elif (
+            self.status == ComplaintStatus.PENDING and status == ComplaintStatus.PAUSED
+        ):
+            self.status = status
+        elif (
+            self.status == ComplaintStatus.PAUSED and status == ComplaintStatus.PENDING
+        ):
+            self.status = status
+        elif (
+            self.status == ComplaintStatus.PENDING
+            and status == ComplaintStatus.RESOLVED
+        ):
+            self.status = status
+        else:
+            raise ValueError(
+                f"Invalid status transition, you can't move from {self.status} to {status}"
+            )
 
     async def upload_supporting_docs(self, supporting_docs: list[UploadFile]) -> None:
         """
@@ -222,6 +242,7 @@ class Feedback(Base):
 
     Attributes:
         id (UUID): The primary key of the feedback.
+        message_id (str): The unique message ID of the feedback.
         user_id (UUID): The ID of the user who submitted the feedback (foreign key).
         complaint_id (UUID): The ID of the complaint the feedback is related to (foreign key).
         message (str): The feedback message.
@@ -232,6 +253,7 @@ class Feedback(Base):
     __tablename__ = "feedbacks"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    message_id: Mapped[str] = mapped_column()
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     complaint_id: Mapped[UUID] = mapped_column(
         ForeignKey("complaints.id", ondelete="CASCADE")

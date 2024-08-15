@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OTP Verification</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            color: #333333;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background-color: #092948;
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .content {
+            padding: 20px;
+        }
+        .content p {
+            font-size: 16px;
+            line-height: 1.5;
+            margin: 20px 0;
+        }
+        .content .otp {
+            font-weight: bold;
+            font-size: 24px;
+            margin: 20px 0;
+        }
+        .footer {
+            background-color: #092948;
+            color: #ffffff;
+            padding: 10px;
+            text-align: center;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>OTP Verification</h1>
+        </div>
+        <div class="content">
+            <p>Hello,</p>
+            <p>Please use the following OTP to verify your email address:</p>
+            <p class="otp">{{ otp }}</p>
+            <p>This OTP is valid for a limited time. Please do not share it with anyone.</p>
+        </div>
+        <div class="footer">
+            <p>&copy; 2024 Online Complaint Management System. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>

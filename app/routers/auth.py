@@ -228,7 +228,7 @@ async def signup(
         html_text = await get_html_from_template("email_otp_verification.html", otp=otp)
         await send_email(
             smtp=async_smtp,
-            sender=settings.from_email,
+            sender={"email": settings.from_email, "display_name": settings.from_name},
             recipient=form_data["email"],
             subject="Verify your email",
             plain_text=plain_text,
@@ -313,12 +313,12 @@ async def forgot_password(
     html_text = await get_html_from_template(
         template="reset_password.html",
         reset_link=reset_link,
-        user_name=await user.awaitable_attrs.username,
+        username=await user.awaitable_attrs.username,
         expiry_time=settings.reset_token_expiry_minutes,
     )
     await send_email(
         smtp=async_smtp,
-        sender=settings.from_email,
+        sender={"email": settings.from_email, "display_name": settings.from_name},
         recipient=email,
         subject="Reset your password",
         plain_text=plain_text,
@@ -421,7 +421,7 @@ async def send_email_verification(
     html_text = await get_html_from_template("email_otp_verification.html", otp=otp)
     await send_email(
         smtp=async_smtp,
-        sender=settings.from_email,
+        sender={"email": settings.from_email, "display_name": settings.from_name},
         recipient=email,
         subject="Verify your email",
         plain_text=plain_text,

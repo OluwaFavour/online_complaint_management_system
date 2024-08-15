@@ -1,7 +1,16 @@
 from typing import Annotated, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    HTTPException,
+    Path,
+    status,
+    UploadFile,
+    Query,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi_pagination import paginate, Params
@@ -13,11 +22,14 @@ from ..crud.complaint import (
     get_complaint_by_id,
     get_complaints_by_user_id,
 )
+from ..crud.feedback import create_feedback, get_feedback_by_id
 from ..db.models import Complaint, User
 from ..dependencies import get_current_active_user, get_async_session
 from ..enums import ComplaintStatus
 from ..forms.complaint import ComplaintCreateForm
 from ..schemas.complaint import Complaint as ComplaintSchema, ComplaintCountByStatus
+from ..schemas.feedback import Feedback as FeedbackSchema
+from ..utils.feedback import reply_feedback
 
 
 router = APIRouter(prefix="/api/complaints", tags=["complaints"])
@@ -133,3 +145,50 @@ async def get_complaint_count_by_status(
         return ComplaintCountByStatus(status=status_type, count=len(complaints))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post(
+    "/{complaint_id}/feedback/{feedback_id}",
+    summary="Reply to a feedback",
+    response_model=FeedbackSchema,
+    status_code=status.HTTP_200_OK,
+)
+async def reply_to_feedback(
+    complaint_id: Annotated[
+        UUID,
+        Path(
+            title="Complaint ID",
+            description="The ID of the complaint the feedback belongs to",
+        ),
+    ],
+    feedback_id: Annotated[
+        UUID,
+        Path(title="Feedback ID", description="The ID of the feedback to reply to"),
+    ],
+    message: Annotated[str, Form(title="Message", description="The reply message")],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    user: Annotated[User, Depends(get_current_active_user)],
+):
+    complaint = await get_complaint_by_id(session=session, complaint_id=complaint_id)
+    if not complaint:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Complaint not found"
+        )
+    if await complaint.awaitable_attrs.user_id != await user.awaitable_attrs.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to reply to this feedback",
+        )
+    feedback = await get_feedback_by_id(session=session, feedback_id=feedback_id)
+    if not feedback:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found"
+        )
+    if await feedback.awaitable_attrs.complaint_id != complaint_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Feedback does not belong to the complaint",
+        )
+    feedback = await reply_feedback(message=message, feedback=feedback, sender=user)
+    feedback = await create_feedback(session=session, feedback=feedback)
+    return feedback

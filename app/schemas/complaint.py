@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, ConfigDict, HttpUrl, field_serializer
 
 from ..enums import ComplaintStatus
+from .feedback import Feedback
 
 
 class ComplaintBase(BaseModel):
@@ -29,6 +30,7 @@ class Complaint(ComplaintBase):
     user_id: UUID
     created_at: datetime
     status: ComplaintStatus
+    feedbacks: list[Feedback]
 
     @classmethod
     async def model_validate(cls, complaint):
