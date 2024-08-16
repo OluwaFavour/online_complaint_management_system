@@ -12,6 +12,21 @@ from .routers import auth, user, complaint, admin
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Asynchronous context manager for managing the lifespan of the FastAPI application.
+
+    Parameters:
+    - app (FastAPI): The FastAPI application.
+
+    Yields:
+    None
+
+    Usage:
+    ```
+    async with lifespan(app):
+        # Code to be executed within the lifespan of the application
+    ```
+    """
     await init_db()
     yield
     await dispose_db()
@@ -47,8 +62,8 @@ app.include_router(complaint.router)
 app.include_router(admin.router)
 
 
-@app.get("/")
-@app.head("/")
+@app.get("/", include_in_schema=False)
+@app.head("/", include_in_schema=False)
 async def read_root():
     return {
         "message": "Welcome to the Online Complaint Management System API",

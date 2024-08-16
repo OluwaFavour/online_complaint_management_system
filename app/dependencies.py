@@ -15,6 +15,22 @@ from .utils.security import verify_payload, verify_password
 
 
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Asynchronous generator function that returns an async session.
+
+    Returns:
+        AsyncGenerator[AsyncSession, None]: An asynchronous generator that yields an async session.
+
+    Raises:
+        None
+
+    Example usage:
+        ```
+        async for session in get_async_session():
+            # Use the session for database operations
+            ...
+        ```
+    """
     db = AsyncSessionLocal()
     try:
         yield db
@@ -23,7 +39,21 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def get_async_smtp():
-    """Manage the SMTP connection by creating a new connection for each request"""
+    """
+    Manage the SMTP connection by creating a new connection for each request.
+
+    Raises:
+        HTTPException: If there is an error connecting to the SMTP server, starting TLS, authenticating, or if any other SMTP exception occurs.
+
+    Returns:
+        async_smtp: An SMTP connection object.
+
+    Example usage:
+        ```
+        async with get_async_smtp() as smtp:
+            # Use the smtp connection for sending emails
+        ```
+    """
     async_smtp = aiosmtplib.SMTP(
         hostname=settings.smtp_host,
         port=settings.smtp_port,
@@ -94,6 +124,19 @@ async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     async_session: Annotated[AsyncSession, Depends(get_async_session)],
 ) -> User:
+    """
+    Retrieves the current user based on the provided token.
+
+    Args:
+        token (str): The authentication token.
+        async_session (AsyncSession): The asynchronous session.
+
+    Returns:
+        User: The current user.
+
+    Raises:
+        HTTPException: If the token is invalid, revoked, or the user is not found.
+    """
     try:
         username, jti = await verify_payload(token)
         token: Token | None = await get_token_by_jti(session=async_session, jti=jti)
@@ -141,6 +184,19 @@ async def get_current_user(
 async def get_current_active_user(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> User:
+    """
+    Get the current active user.
+
+    Parameters:
+        current_user (User): The current user.
+
+    Returns:
+        User: The current active user.
+
+    Raises:
+        HTTPException: If the current user is inactive.
+
+    """
     if not current_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
@@ -151,6 +207,18 @@ async def get_current_active_user(
 async def get_current_active_super_user(
     current_user: Annotated[User, Depends(get_current_active_user)],
 ) -> User:
+    """
+    Get the current active super user.
+
+    Args:
+        current_user (User): The current user.
+
+    Returns:
+        User: The current active super user.
+
+    Raises:
+        HTTPException: If the current user is inactive or not a superuser.
+    """
     if not current_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"

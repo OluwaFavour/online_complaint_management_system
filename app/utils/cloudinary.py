@@ -7,6 +7,19 @@ from fastapi import HTTPException, status
 
 
 async def upload_image(asset_folder: str, image: Any) -> str:
+    """
+    Uploads an image to the cloud storage.
+
+    Args:
+        asset_folder (str): The folder in the cloud storage where the image will be stored.
+        image (Any): The image to be uploaded.
+
+    Returns:
+        str: The URL of the uploaded image.
+
+    Raises:
+        HTTPException: If an internal server error occurs while uploading the image.
+    """
     try:
         response = upload(
             image,
@@ -25,6 +38,18 @@ async def upload_image(asset_folder: str, image: Any) -> str:
 
 
 async def delete_folder_by_prefix(prefix: str) -> None:
+    """
+    Delete a folder and its contents in the cloud storage system based on the given prefix.
+
+    Args:
+        prefix (str): The prefix used to identify the folder and its contents.
+
+    Raises:
+        HTTPException: If an internal server error occurs while deleting the folder.
+
+    Returns:
+        None
+    """
     try:
         delete_resources_by_prefix(prefix)
         delete_folder(prefix)

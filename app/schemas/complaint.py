@@ -46,3 +46,7 @@ class ComplaintCountWithStatusAndTotal(BaseModel):
     paused: int
     resolved: int
     total: int
+
+
+class Detail(BaseModel):
+    detail: str

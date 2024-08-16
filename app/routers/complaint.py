@@ -5,12 +5,12 @@ from fastapi import (
     APIRouter,
     Depends,
     Form,
-    HTTPException,
     Path,
     status,
     UploadFile,
     Query,
 )
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from fastapi_pagination import paginate, Params
@@ -31,6 +31,7 @@ from ..schemas.complaint import (
     Complaint as ComplaintSchema,
     ComplaintCountByStatus,
     ComplaintCountWithStatusAndTotal,
+    Detail,
 )
 from ..schemas.feedback import Feedback as FeedbackSchema
 from ..utils.feedback import reply_feedback
@@ -44,6 +45,7 @@ router = APIRouter(prefix="/api/complaints", tags=["complaints"])
     status_code=status.HTTP_201_CREATED,
     summary="Create a new complaint",
     response_model=ComplaintSchema,
+    responses={status.HTTP_400_BAD_REQUEST: {"model": Detail}},
 )
 async def add_complaint(
     form: Annotated[ComplaintCreateForm, Depends()],
@@ -68,7 +70,9 @@ async def add_complaint(
         # Rollback the transaction if an error occurs
         if complaint:
             await delete_complaint(session=session, complaint=complaint)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)}
+        )
 
 
 @router.get(
@@ -76,6 +80,7 @@ async def add_complaint(
     summary="Get complaint count classified by status and total count",
     response_model=ComplaintCountWithStatusAndTotal,
     status_code=status.HTTP_200_OK,
+    responses={status.HTTP_400_BAD_REQUEST: {"model": Detail}},
 )
 async def get_complaint_count_with_status_and_total(
     session: Annotated[AsyncSession, Depends(get_async_session)],
@@ -108,7 +113,9 @@ async def get_complaint_count_with_status_and_total(
         )
         return response
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)}
+        )
 
 
 @router.get(
@@ -116,6 +123,10 @@ async def get_complaint_count_with_status_and_total(
     summary="Get a complaint by ID",
     response_model=ComplaintSchema,
     status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": Detail},
+        status.HTTP_403_FORBIDDEN: {"model": Detail},
+    },
 )
 async def get_complaint(
     complaint_id: UUID,
@@ -124,13 +135,14 @@ async def get_complaint(
 ):
     complaint = await get_complaint_by_id(session=session, complaint_id=complaint_id)
     if not complaint:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Complaint not found"
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": "Complaint not found"},
         )
     if complaint.user_id != user.id:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not authorized to view this complaint",
+            content={"detail": "You are not authorized to view this complaint"},
         )
     return complaint
 
@@ -140,6 +152,7 @@ async def get_complaint(
     summary="Get all complaints",
     response_model=Page[ComplaintSchema],
     status_code=status.HTTP_200_OK,
+    responses={status.HTTP_400_BAD_REQUEST: {"model": Detail}},
 )
 async def get_complaints(
     session: Annotated[AsyncSession, Depends(get_async_session)],
@@ -164,7 +177,9 @@ async def get_complaints(
         )
         return paginate(complaints, params=Params(size=10))
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)}
+        )
 
 
 @router.get(
@@ -172,6 +187,7 @@ async def get_complaints(
     summary="Get complaint count by status_type",
     response_model=ComplaintCountByStatus,
     status_code=status.HTTP_200_OK,
+    responses={status.HTTP_400_BAD_REQUEST: {"model": Detail}},
 )
 async def get_complaint_count_by_status(
     status_type: ComplaintStatus,
@@ -184,7 +200,9 @@ async def get_complaint_count_by_status(
         )
         return ComplaintCountByStatus(status=status_type, count=len(complaints))
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)}
+        )
 
 
 @router.post(
@@ -192,6 +210,11 @@ async def get_complaint_count_by_status(
     summary="Reply to a feedback",
     response_model=FeedbackSchema,
     status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": Detail},
+        status.HTTP_403_FORBIDDEN: {"model": Detail},
+        status.HTTP_400_BAD_REQUEST: {"model": Detail},
+    },
 )
 async def reply_to_feedback(
     complaint_id: Annotated[
@@ -211,23 +234,25 @@ async def reply_to_feedback(
 ):
     complaint = await get_complaint_by_id(session=session, complaint_id=complaint_id)
     if not complaint:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Complaint not found"
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": "Complaint not found"},
         )
     if complaint.user_id != user.id:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not authorized to reply to this feedback",
+            content={"detail": "You are not authorized to reply to this feedback"},
         )
     feedback = await get_feedback_by_id(session=session, feedback_id=feedback_id)
     if not feedback:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Feedback not found"
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": "Feedback not found"},
         )
     if feedback.complaint_id != complaint_id:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Feedback does not belong to the complaint",
+            content={"detail": "Feedback does not belong to the complaint"},
         )
     feedback = await reply_feedback(message=message, feedback=feedback, sender=user)
     feedback = await create_feedback(session=session, feedback=feedback)

@@ -9,6 +9,12 @@ from ..core.config import pwd_context, settings
 
 
 async def generate_otp() -> str:
+    """
+    Generates a random OTP (One-Time Password) consisting of 6 alphanumeric characters.
+
+    Returns:
+        str: The generated OTP.
+    """
     return "".join(
         secrets.choice("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ") for _ in range(6)
     )

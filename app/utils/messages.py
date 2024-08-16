@@ -17,6 +17,19 @@ from ..core.config import settings
 
 
 async def parse_email_address(email_address: str) -> tuple[str, str]:
+    """
+    Parses the given email address and returns a tuple containing the username and domain.
+
+    Args:
+        email_address (str): The email address to be parsed.
+
+    Returns:
+        tuple[str, str]: A tuple containing the username and domain extracted from the email address.
+
+    Raises:
+        ValueError: If the email address is invalid.
+
+    """
     email_address = email_address.split("@")
     if len(email_address) != 2:
         raise ValueError("Invalid email address")
@@ -32,6 +45,19 @@ async def create_email_message(
     in_reply_to: str | None = None,
     references: list[str] | None = None,
 ) -> tuple[EmailMessage, str]:
+    """
+    Creates an email message with the given parameters.
+    Args:
+        subject (str): The subject of the email.
+        recipient (str | dict[str, str]): The recipient of the email. It can be either a string representing the email address or a dictionary with 'email' and 'display_name' keys.
+        plain_text (str): The plain text content of the email.
+        sender (str | dict[str, str]): The sender of the email. It can be either a string representing the email address or a dictionary with 'email' and 'display_name' keys.
+        html_text (str | None, optional): The HTML content of the email. Defaults to None.
+        in_reply_to (str | None, optional): The Message-ID of the email to which this email is a reply. Defaults to None.
+        references (list[str] | None, optional): The list of Message-IDs that this email references. Defaults to None.
+    Returns:
+        tuple[EmailMessage, str]: A tuple containing the created EmailMessage object and the generated Message-ID.
+    """
     if isinstance(recipient, dict):
         to_email = recipient["email"]
         to_display_name = recipient.get("display_name", "")
@@ -85,6 +111,25 @@ async def send_email(
     in_reply_to: str | None = None,
     references: list[str] | None = None,
 ) -> str:
+    """
+    Sends an email using the provided SMTP server.
+
+    Args:
+        smtp (SMTP): The SMTP server to use for sending the email.
+        subject (str): The subject of the email.
+        recipient (str | dict[str, str]): The recipient of the email. Can be a string representing the email address or a dictionary with 'email' and 'display_name' keys.
+        plain_text (str): The plain text content of the email.
+        html_text (str | None, optional): The HTML content of the email. Defaults to None.
+        sender (str | dict[str, str], optional): The sender of the email. Can be a string representing the email address or a dictionary with 'email' and 'display_name' keys. Defaults to {'email': settings.from_email, 'display_name': settings.from_name}.
+        in_reply_to (str | None, optional): The message ID to which this email is a reply. Defaults to None.
+        references (list[str] | None, optional): The list of message IDs that this email references. Defaults to None.
+
+    Returns:
+        str: The message ID of the sent email.
+
+    Raises:
+        HTTPException: If there is an error sending the email. The exception will contain the status code and error details.
+    """
     try:
         message, message_id = await create_email_message(
             subject=subject,
@@ -128,6 +173,21 @@ async def send_email(
 
 
 async def get_html_from_template(template: str, **kwargs) -> str:
+    """
+    Renders an HTML template with the given template name and keyword arguments.
+
+    Args:
+        template (str): The name of the template file.
+        **kwargs: Keyword arguments to be passed to the template.
+
+    Returns:
+        str: The rendered HTML template.
+
+    Raises:
+        TemplateNotFound: If the template file is not found.
+
+    """
+    ...
     env = Environment(loader=FileSystemLoader("app/templates"), enable_async=True)
     template: Template = env.get_template(template)
     rendered_template = await template.render_async(**kwargs)

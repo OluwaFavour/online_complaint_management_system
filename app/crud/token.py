@@ -1,13 +1,15 @@
-from datetime import datetime
+from datetime import datetime, timedelta, UTC
 from uuid import UUID
 
 from sqlalchemy import update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+from ..core.config import settings
 from ..db.models import Token
 from ..enums import TokenType
 from .user import get_user_by_id
+from ..utils.security import create_token as jwt_create_token
 
 
 async def create_token(session: AsyncSession, token: Token) -> Token:
@@ -78,6 +80,57 @@ async def create_refresh_token(
         type=TokenType.REFRESH,
     )
     return await create_token(session=session, token=token)
+
+
+async def generate_token_pair(
+    session: AsyncSession, username: str, user_id: int
+) -> tuple[str, datetime, str, datetime]:
+    """
+    Generates a pair of access and refresh tokens for a user.
+    Args:
+        session (AsyncSession): The async session object.
+        username (str): The username of the user.
+        user_id (int): The ID of the user.
+    Returns:
+        tuple[str, datetime, str, datetime]: A tuple containing the access token, access token expiry datetime,
+        refresh token, and refresh token expiry datetime.
+    """
+    access_token_expires_at = datetime.now(UTC) + timedelta(
+        minutes=settings.access_token_expiry_minutes
+    )
+    refresh_token_expires_at = datetime.now(UTC) + timedelta(
+        days=settings.refresh_token_expiry_days
+    )
+
+    access_token, access_jti = await jwt_create_token(
+        data={"sub": username},
+        expires_at=timedelta(minutes=settings.access_token_expiry_minutes),
+    )
+    refresh_token, refresh_jti = await jwt_create_token(
+        data={"sub": username},
+        expires_at=timedelta(days=settings.refresh_token_expiry_days),
+    )
+
+    await create_access_token(
+        session=session,
+        jti=access_jti,
+        expires_at=access_token_expires_at,
+        user_id=user_id,
+    )
+    await create_refresh_token(
+        session=session,
+        access_jti=access_jti,
+        jti=refresh_jti,
+        expires_at=refresh_token_expires_at,
+        user_id=user_id,
+    )
+
+    return (
+        access_token,
+        access_token_expires_at,
+        refresh_token,
+        refresh_token_expires_at,
+    )
 
 
 async def get_token_by_jti(session: AsyncSession, jti: str) -> Token | None:

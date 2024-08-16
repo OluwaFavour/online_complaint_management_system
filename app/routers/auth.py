@@ -2,7 +2,8 @@ from aiosmtplib import SMTP
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Header, status, Form
+from fastapi import APIRouter, Depends, Header, status, Form
+from fastapi.responses import JSONResponse
 import jwt
 from pydantic import EmailStr
 from sqlalchemy.exc import IntegrityError
@@ -13,15 +14,15 @@ from ..crud.otp import create_otp, delete_otp, get_otp_by_email
 from ..crud.token import (
     create_access_token,
     create_refresh_token,
+    generate_token_pair,
     get_token_by_jti,
     revoke_token,
     revoke_active_tokens,
 )
 from ..crud.user import (
+    create_user,
     get_user_by_email,
     get_user_by_username,
-    create_user,
-    update_user_password,
 )
 from ..db.models import Token, User
 from ..dependencies import (
@@ -31,6 +32,7 @@ from ..dependencies import (
     get_async_smtp,
 )
 from ..forms.auth import SignUpForm
+from ..schemas.complaint import Detail
 from ..schemas.token import Token as TokenSchema
 from ..schemas.user import User as UserSchema, UserCreate, PasswordUpdate
 from ..utils.messages import get_html_from_template, send_email
@@ -51,50 +53,22 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
     response_model=TokenSchema,
     summary="Login to get access token",
     status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_400_BAD_REQUEST: {"model": Detail}},
 )
 async def login_for_access_token(
     user: Annotated[User | None, Depends(authenticate)],
     async_session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     if not user:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect email or password",
+            content={"detail": "Incorrect email or password"},
         )
 
-    # Generate access token
-    access_token_expires_at: datetime = datetime.now() + timedelta(
-        minutes=settings.access_token_expiry_minutes
-    )
-    username = user.username
-    user_id = user.id
-    access_token, access_jti = await create_token(
-        data={"sub": username},
-        expires_at=timedelta(minutes=settings.access_token_expiry_minutes),
-    )
-    # Save the token to the database
-    await create_access_token(
-        session=async_session,
-        jti=access_jti,
-        expires_at=access_token_expires_at,
-        user_id=user_id,
-    )
-
-    # Generate refresh token
-    refresh_token_expires_at: datetime = datetime.now() + timedelta(
-        days=settings.refresh_token_expiry_days
-    )
-    refresh_token, refresh_jti = await create_token(
-        data={"sub": username},
-        expires_at=timedelta(days=settings.refresh_token_expiry_days),
-    )
-    # Save the token to the database
-    await create_refresh_token(
-        session=async_session,
-        access_jti=access_jti,
-        jti=refresh_jti,
-        expires_at=refresh_token_expires_at,
-        user_id=user_id,
+    access_token, access_token_expires_at, refresh_token, refresh_token_expires_at = (
+        await generate_token_pair(
+            session=async_session, username=user.username, user_id=user.id
+        )
     )
 
     return TokenSchema(
@@ -111,6 +85,10 @@ async def login_for_access_token(
     response_model=TokenSchema,
     summary="Refresh access token",
     status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"model": Detail},
+        status.HTTP_401_UNAUTHORIZED: {"model": Detail},
+    },
 )
 async def refresh_access_token(
     authorization: Annotated[str, Header(pattern="Bearer .*")],
@@ -120,17 +98,13 @@ async def refresh_access_token(
     try:
         # Verify the token
         username, jti = await verify_payload(token)
-        token: Token | None = await get_token_by_jti(session=async_session, jti=jti)
-        if not token:
-            raise HTTPException(
+        stored_token: Token | None = await get_token_by_jti(
+            session=async_session, jti=jti
+        )
+        if not stored_token or stored_token.revoked:
+            return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        if token.revoked:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has been revoked",
+                content={"detail": "Invalid token or token has been revoked"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -139,9 +113,9 @@ async def refresh_access_token(
             session=async_session, username=username
         )
         if not user:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
+                content={"detail": "Invalid token"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -154,12 +128,12 @@ async def refresh_access_token(
             expires_at=timedelta(minutes=settings.access_token_expiry_minutes),
         )
         # Revoke the old token
-        old_token_jti = token.access_jti
+        old_token_jti = stored_token.access_jti
         old_token = await get_token_by_jti(session=async_session, jti=old_token_jti)
         if not old_token:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token, refresh token not found",
+                content={"detail": "Invalid token, refresh token not found"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
         await revoke_token(
@@ -180,15 +154,14 @@ async def refresh_access_token(
             token_type="bearer",
         )
     except jwt.PyJWTError as e:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not validate credentials because of the following error: {e}",
+            content={"detail": f"Could not validate credentials: {e}"},
             headers={"WWW-Authenticate": "Bearer"},
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)}
         )
 
 
@@ -223,9 +196,9 @@ async def signup(
 
     # Check if user already exists
     if await get_user_by_email(session=async_session, email=form_data["email"]):
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User with this email already exists",
+            content={"detail": "User with this email already exists"},
         )
 
     # Hash the password
@@ -264,13 +237,19 @@ async def signup(
         )
         return {"message": "OTP sent to your email"}
     except IntegrityError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e.orig))
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e.orig)}
+        )
 
 
 @router.post(
     "/logout",
     summary="Logout user",
     status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": Detail},
+        status.HTTP_400_BAD_REQUEST: {"model": Detail},
+    },
 )
 async def logout(
     token: Annotated[str, Depends(oauth2_scheme)],
@@ -281,15 +260,15 @@ async def logout(
         _, jti = await verify_payload(token)
         token: Token | None = await get_token_by_jti(session=async_session, jti=jti)
         if not token:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
+                content={"detail": "Invalid token"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
         if token.revoked:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has been revoked",
+                content={"detail": "Token has been revoked"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -298,15 +277,16 @@ async def logout(
 
         return None
     except jwt.PyJWTError as e:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not validate credentials because of the following error: {e}",
+            content={
+                "detail": f"Could not validate credentials because of the following error: {e}"
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)}
         )
 
 
@@ -353,9 +333,8 @@ async def forgot_password(
 ):
     user: User | None = await get_user_by_email(session=async_session, email=email)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND, content={"detail": "User not found"}
         )
 
     # Generate reset token
@@ -389,20 +368,9 @@ async def forgot_password(
     status_code=status.HTTP_202_ACCEPTED,
     response_model=UserSchema,
     responses={
-        400: {
-            "description": "Invalid token",
-            "content": {"application/json": {"example": {"detail": "Invalid token"}}},
-        },
-        401: {
-            "description": "Invalid token",
-            "content": {"application/json": {"example": {"detail": "Invalid token"}}},
-        },
-        422: {
-            "description": "Invalid password",
-            "content": {
-                "application/json": {"example": {"detail": "Invalid password"}}
-            },
-        },
+        status.HTTP_400_BAD_REQUEST: {"model": Detail},
+        status.HTTP_401_UNAUTHORIZED: {"model": Detail},
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": Detail},
     },
 )
 async def reset_password(
@@ -414,8 +382,8 @@ async def reset_password(
     try:
         password = PasswordUpdate(password=password).password
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(e)}
         )
 
     # Verify the token
@@ -428,17 +396,19 @@ async def reset_password(
             session=async_session, username=username
         )
         if not user:
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
+                content={"detail": "Invalid token"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
         # Verify the new password
         if await verify_password(password, user.hashed_password):
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="New password cannot be the same as the old password",
+                content={
+                    "detail": "New password cannot be the same as the old password"
+                },
             )
 
         # Update the password
@@ -447,15 +417,16 @@ async def reset_password(
         await async_session.refresh(user)
         return user
     except jwt.PyJWTError as e:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not validate credentials because of the following error: {e}",
+            content={
+                "detail": f"Could not validate credentials because of the following error: {e}"
+            },
             headers={"WWW-Authenticate": "Bearer"},
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)}
         )
 
 
@@ -494,14 +465,14 @@ async def send_email_verification(
     # Check if email is already verified
     user: User | None = await get_user_by_email(session=async_session, email=email)
     if not user:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found, please sign up",
+            content={"detail": "User not found, please sign up"},
         )
     elif user.is_email_verified:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already verified",
+            content={"detail": "Email already verified"},
         )
 
     # Check if otp already exists for the email
@@ -536,6 +507,30 @@ async def send_email_verification(
     summary="Verify email",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=UserSchema,
+    responses={
+        404: {
+            "description": "User not found",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User not found, please sign up"}
+                }
+            },
+        },
+        404: {
+            "description": "OTP not found",
+            "content": {"application/json": {"example": {"detail": "OTP not found"}}},
+        },
+        400: {
+            "description": "Invalid OTP",
+            "content": {"application/json": {"example": {"detail": "Invalid OTP"}}},
+        },
+        400: {
+            "description": "Email already verified",
+            "content": {
+                "application/json": {"example": {"detail": "Email already verified"}}
+            },
+        },
+    },
 )
 async def verify_email(
     email: Annotated[EmailStr, Form(title="Email")],
@@ -545,29 +540,27 @@ async def verify_email(
     # Check if email is already verified
     user: User | None = await get_user_by_email(session=async_session, email=email)
     if not user:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found, please sign up",
+            content={"detail": "User not found, please sign up"},
         )
     elif user.is_email_verified:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already verified",
+            content={"detail": "Email already verified"},
         )
 
     # Get the OTP
     otp_data = await get_otp_by_email(session=async_session, email=email)
     if not otp_data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="OTP not found",
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND, content={"detail": "OTP not found"}
         )
 
     # Verify the OTP
     if not await verify_password(otp.upper(), otp_data.otp):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid OTP",
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, content={"detail": "Invalid OTP"}
         )
     # Update the user
     await user.verify_email()
@@ -584,10 +577,7 @@ async def verify_email(
     status_code=status.HTTP_200_OK,
     responses={
         422: {
-            "description": "Invalid password",
-            "content": {
-                "application/json": {"example": {"detail": "Invalid password"}}
-            },
+            "model": Detail,
         },
         200: {
             "description": "Password updated successfully",
@@ -596,6 +586,9 @@ async def verify_email(
                     "example": {"message": "Password updated successfully"}
                 }
             },
+        },
+        400: {
+            "model": Detail,
         },
     },
 )
@@ -609,22 +602,22 @@ async def change_password(
     try:
         new_password = PasswordUpdate(password=new_password).password
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(e)}
         )
 
     # Verify the old password
     if not await verify_password(old_password, user.hashed_password):
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect old password",
+            content={"detail": "Incorrect old password"},
         )
 
     # Verify the new password
     if new_password == old_password:
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="New password cannot be the same as the old password",
+            content={"detail": "New password cannot be the same as the old password"},
         )
 
     # Update the password

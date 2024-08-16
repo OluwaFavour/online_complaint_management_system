@@ -46,6 +46,15 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token")
 
 # Cloudinary configuration parser
 def cloudinary_config_parser(cloudinary_url: str) -> dict[str, str]:
+    """
+    Parses the Cloudinary URL and extracts the cloud name, API key, and API secret.
+
+    Args:
+        cloudinary_url (str): The Cloudinary URL to parse.
+
+    Returns:
+        dict[str, str]: A dictionary containing the cloud name, API key, and API secret.
+    """
     cloudinary_config = {}
     cloudinary_url = cloudinary_url.split("://")[1]
     cloudinary_config["cloud_name"] = cloudinary_url.split("@")[1].split(".")[0]
