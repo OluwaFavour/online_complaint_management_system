@@ -1,0 +1,49 @@
+# Exported from Render on 2024-08-18T23:45:00Z
+services:
+- type: web
+  name: online_complaint_management_system
+  runtime: python
+  repo: https://github.com/OluwaFavour/online_complaint_management_system
+  plan: free
+  envVars:
+  - key: FRONTEND_URL
+    sync: false
+  - key: CORS_ALLOWED_ORIGINS
+    sync: false
+  - key: HOST_SERVERS
+    sync: false
+  - key: DATABASE_URL
+    sync: false
+  - key: SMTP_LOGIN
+    sync: false
+  - key: SMTP_PORT
+    sync: false
+  - key: SMTP_HOST
+    sync: false
+  - key: SMTP_PASSWORD
+    sync: false
+  - key: JWT_SECRET_KEY
+    sync: false
+  - key: FROM_NAME
+    sync: false
+  - key: FROM_EMAIL
+    sync: false
+  - key: DEBUG
+    sync: false
+  - key: CORS_ALLOW_CREDENTIALS
+    sync: false
+  - key: CLOUDINARY_URL
+    sync: false
+  - key: ADMIN_USERNAME
+    sync: false
+  - key: ADMIN_PASSWORD
+    sync: false
+  - key: ADMIN_EMAIL
+    sync: false
+  region: oregon
+  buildCommand: pip install -r requirements.txt; python cli.py run-alembic; python
+    cli.py create-admin
+  startCommand: fastapi run app/main.py
+  autoDeploy: false
+  pullRequestPreviewsEnabled: false
+version: "1"
