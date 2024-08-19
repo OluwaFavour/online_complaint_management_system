@@ -141,12 +141,16 @@ async def refresh_access_token(
         )
         user_id = user.id
         # Save the token to the database
-        await create_access_token(
+        access_token = await create_access_token(
             session=async_session,
             jti=jti,
             expires_at=access_token_expires_at,
             user_id=user_id,
         )
+        # Update the refresh token with the new access token jti
+        stored_token.access_jti = access_token.jti
+        await async_session.commit()
+        await async_session.refresh(stored_token)
 
         return TokenSchema(
             access_token=access_token,
