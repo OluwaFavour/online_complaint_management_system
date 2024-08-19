@@ -95,10 +95,10 @@ async def generate_token_pair(
         tuple[str, datetime, str, datetime]: A tuple containing the access token, access token expiry datetime,
         refresh token, and refresh token expiry datetime.
     """
-    access_token_expires_at = datetime.now(UTC) + timedelta(
+    access_token_expires_at = datetime.now() + timedelta(
         minutes=settings.access_token_expiry_minutes
     )
-    refresh_token_expires_at = datetime.now(UTC) + timedelta(
+    refresh_token_expires_at = datetime.now() + timedelta(
         days=settings.refresh_token_expiry_days
     )
 

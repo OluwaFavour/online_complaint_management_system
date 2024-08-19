@@ -56,6 +56,7 @@ async def create_admin_user(username: str, email: str, password: str):
             email=email,
             is_active=True,
             is_superuser=True,
+            is_email_verified=True,
             hashed_password=await get_password_hash(password),
         )
         await create_user(session=db, user=user)

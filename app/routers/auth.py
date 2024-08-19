@@ -123,7 +123,7 @@ async def refresh_access_token(
         access_token_expires_at: datetime = datetime.now() + timedelta(
             minutes=settings.access_token_expiry_minutes
         )
-        access_token, jti = await create_token(
+        access_token_str, jti = await create_token(
             data={"sub": username},
             expires_at=timedelta(minutes=settings.access_token_expiry_minutes),
         )
@@ -153,7 +153,7 @@ async def refresh_access_token(
         await async_session.refresh(stored_token)
 
         return TokenSchema(
-            access_token=access_token,
+            access_token=access_token_str,
             access_token_expires_at=access_token_expires_at,
             token_type="bearer",
         )
