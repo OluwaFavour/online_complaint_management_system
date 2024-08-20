@@ -37,9 +37,12 @@ class SignUpForm:
         Returns:
             UserCreate: The UserCreate object representing the user data.
         """
-        return UserCreate(
-            username=self.username, email=self.email, password=self.password
-        )
+        try:
+            return UserCreate(
+                username=self.username, email=self.email, password=self.password
+            )
+        except Exception as e:
+            raise e
 
 
 class SignInForm:
