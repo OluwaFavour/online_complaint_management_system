@@ -54,6 +54,11 @@ async def create_admin_user(username: str, email: str, password: str):
         user = User(
             username=username,
             email=email,
+            firstname="Admin",
+            lastname="User",
+            school="Admin School",
+            department="Admin Department",
+            is_student=False,
             is_active=True,
             is_superuser=True,
             is_email_verified=True,
