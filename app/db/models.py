@@ -103,8 +103,13 @@ class User(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     username: Mapped[str] = mapped_column(index=True)
+    firstname: Mapped[str] = mapped_column()
+    lastname: Mapped[str] = mapped_column()
+    school: Mapped[str] = mapped_column(index=True)
+    department: Mapped[str] = mapped_column(index=True)
     email: Mapped[str] = mapped_column(unique=True, index=True)
     hashed_password: Mapped[str] = mapped_column()
+    is_student: Mapped[bool] = mapped_column(insert_default=True)
     is_active: Mapped[bool] = mapped_column(insert_default=True)
     is_email_verified: Mapped[bool] = mapped_column(insert_default=False)
     is_superuser: Mapped[bool] = mapped_column(insert_default=False)

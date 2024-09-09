@@ -9,7 +9,11 @@ from .complaint import Complaint
 
 class UserBase(BaseModel):
     username: str
+    firstname: str
+    lastname: str
     email: EmailStr
+    school: str
+    department: str
 
 
 class UserCreate(UserBase):

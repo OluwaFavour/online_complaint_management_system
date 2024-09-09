@@ -170,9 +170,9 @@ async def refresh_access_token(
 
 
 @router.post(
-    "/register",
+    "/register_staff",
     status_code=status.HTTP_201_CREATED,
-    summary="Sign up user",
+    summary="Sign up user as staff",
     responses={
         400: {
             "description": "User with this email or username already exists",
@@ -190,7 +190,89 @@ async def refresh_access_token(
         },
     },
 )
-async def signup(
+async def signup_staff(
+    form: Annotated[SignUpForm, Depends()],
+    async_session: Annotated[AsyncSession, Depends(get_async_session)],
+    async_smtp: Annotated[SMTP, Depends(get_async_smtp)],
+):
+    try:
+        form: UserCreate = await form.model()
+        form_data = form.model_dump()
+    except Exception as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e)}
+        )
+
+    # Check if user already exists
+    if await get_user_by_email(session=async_session, email=form_data["email"]):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": "User with this email already exists"},
+        )
+
+    # Hash the password
+    password = form_data.pop("password")
+    if password:
+        form_data["hashed_password"] = await get_password_hash(password=password)
+
+    # Create the user
+    user = User(**form_data, is_student=False)
+    try:
+        user = await create_user(session=async_session, user=user)
+        # Check if otp already exists for the email
+        otp = await get_otp_by_email(session=async_session, email=form_data["email"])
+        if otp:
+            # Delete the existing OTP
+            await delete_otp(session=async_session, otp=otp)
+        otp = await generate_otp()
+
+        # Encode the OTP
+        encoded_otp = await get_password_hash(otp)
+
+        # Store the encoded OTP in the database
+        await create_otp(
+            session=async_session, email=form_data["email"], otp=encoded_otp
+        )
+        # Send the reset token to the user
+        plain_text = f"Your OTP is: {otp}"
+        html_text = await get_html_from_template("email_otp_verification.html", otp=otp)
+        await send_email(
+            smtp=async_smtp,
+            sender={"email": settings.from_email, "display_name": settings.from_name},
+            recipient=form_data["email"],
+            subject="Verify your email",
+            plain_text=plain_text,
+            html_text=html_text,
+        )
+        return {"message": "OTP sent to your email"}
+    except IntegrityError as e:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST, content={"detail": str(e.orig)}
+        )
+
+
+@router.post(
+    "/register_student",
+    status_code=status.HTTP_201_CREATED,
+    summary="Sign up user as student",
+    responses={
+        400: {
+            "description": "User with this email or username already exists",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User with this email already exists"}
+                }
+            },
+        },
+        201: {
+            "description": "OTP sent to your email",
+            "content": {
+                "application/json": {"example": {"message": "OTP sent to your email"}}
+            },
+        },
+    },
+)
+async def signup_student(
     form: Annotated[SignUpForm, Depends()],
     async_session: Annotated[AsyncSession, Depends(get_async_session)],
     async_smtp: Annotated[SMTP, Depends(get_async_smtp)],
